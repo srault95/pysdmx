@@ -8,7 +8,6 @@ Installation
 
 For the time being, pysdmx is not on pypi. You can use the standard procedure from distutils.
 
-    python3 setup.py sdist
     python3 setup.py install
 
 Usage
