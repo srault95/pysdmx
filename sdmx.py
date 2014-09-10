@@ -276,23 +276,12 @@ class Repository(object):
         :type startperiod: datetime.datetime()
         :param endperiod: the ending date of the time series that will be downloaded (optional, default: None)
         :type endperiod: datetime.datetime()
-        :param to_file: if it is a string, the xml file is, after parsing it,
-        written to a file with this name. Default: None
-        :param from_file: if it is a string, the xml file is read from a file with that name instead of
-        requesting the data via http. Default: None
-        :concat: If False, return a tuple (l, d) where
-        l is a list of the series whose name attributes contain 
-        the metadata as namedtuple, and d is a dict containing any global metadata.
-        If True: return a tuple (df, d) where df is a pandas.DataFrame
-        with hierarchical index generated from the metadata. Explore the
-        structure by issuing 'df.columns.names' and 'df.columns.levels'.
-        The order of index levels is determined by the number of actual values 
-        found in the series' metadata for each key.
-        If concat is a list of metadata keys, they determine the order of index levels.
-        d: a dict of global metadata.    
-        
-        return tuple of the form (l, d) or (df, d)
-        depending on the value of 'concat'.
+        :param to_file: if it is a string, the xml file is, after parsing it, written to a file with this name. Default: None
+        :param from_file: if it is a string, the xml file is read from a file with that name instead of requesting the data via http. Default: None
+        :param concat: If False, return a tuple (l, d) where l is a list of the series whose name attributes contain  the metadata as namedtuple, and d is a dict containing any global metadata. If True: return a tuple (df, d) where df is a pandas.DataFrame with hierarchical index generated from the metadata. Explore the structure by issuing 'df.columns.names' and 'df.columns.levels' The order of index levels is determined by the number of actual values found in the series' metadata for each key. If concat is a list of metadata keys, they determine the order of index levels.
+        :param d: a dict of global metadata.    
+
+        :return: tuple of the form (l, d) or (df, d) depending on the value of 'concat'.
         """
        
         series_list = [] 
