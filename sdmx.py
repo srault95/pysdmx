@@ -458,6 +458,8 @@ ilo = SDMX_REST('http://www.ilo.org/ilostat/sdmx/ws/rest/',
 fao = SDMX_REST('http://data.fao.org/sdmx',
                      '2_1','FAO')
 
+__all__ = ('ecb','ilo','fao','eurostat','SDMX_REST')
+
 # This is for easier testing during development. Run it as a script. 
 # Play around with the args concat, to_file and from_file, and remove this line before release.
 # d=eurostat.data('ei_nagt_q_r2', '', concat = False, from_file = 'ESTAT.sdmx')
