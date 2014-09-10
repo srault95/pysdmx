@@ -77,7 +77,7 @@ def date_parser(date, frequency):
         return datetime.datetime.strptime(date, '%Y-%m-%d')
 
 
-class SDMX_REST(object):
+class Repository(object):
     """Data provider. This is the main class that allows practical access to all the data.
 
     :ivar sdmx_url: The URL of the SDMX endpoint, the webservice employed to access the data.
@@ -447,18 +447,18 @@ class SDMX_REST(object):
             return series_list, global_codes
     
     
-eurostat = SDMX_REST('http://www.ec.europa.eu/eurostat/SDMX/diss-web/rest',
+eurostat = Repository('http://www.ec.europa.eu/eurostat/SDMX/diss-web/rest',
                      '2_1','ESTAT')
-eurostat_test = SDMX_REST('http://localhost:8800/eurostat',
+eurostat_test = Repository('http://localhost:8800/eurostat',
                      '2_1','ESTAT')
-ecb = SDMX_REST('http://sdw-ws.ecb.europa.eu',
+ecb = Repository('http://sdw-ws.ecb.europa.eu',
                      '2_0','ECB')
-ilo = SDMX_REST('http://www.ilo.org/ilostat/sdmx/ws/rest/',
+ilo = Repository('http://www.ilo.org/ilostat/sdmx/ws/rest/',
                      '2_1','ILO')
-fao = SDMX_REST('http://data.fao.org/sdmx',
+fao = Repository('http://data.fao.org/sdmx',
                      '2_1','FAO')
 
-__all__ = ('ecb','ilo','fao','eurostat','SDMX_REST')
+__all__ = ('ecb','ilo','fao','eurostat','Repository')
 
 # This is for easier testing during development. Run it as a script. 
 # Play around with the args concat, to_file and from_file, and remove this line before release.
