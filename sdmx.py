@@ -15,7 +15,7 @@ import datetime, time
 from io import BytesIO
 import re
 import zipfile
-from collections import OrderedDict, namedtuple
+from collections import OrderedDict, namedtuple, defaultdict
 
 
 # Allow easy checking for existing namedtuple classes that can be reused for column metadata  
@@ -123,7 +123,7 @@ class Repository(object):
             response_str = request.text.encode('utf-8')
         elif request.status_code == 430:
             #Sometimes, eurostat creates a zipfile when the query is too large. We have to wait for the file to be generated.
-            messages = response.xpath('.//footer:Message/common:Text',
+            messages = response.XPath('.//footer:Message/common:Text',
                                       namespaces=response.nsmap)
             regex_ = re.compile("Due to the large query the response will be written "
                                 "to a file which will be located under URL: (.*)")
@@ -151,7 +151,6 @@ class Repository(object):
         else:
             raise ValueError("Error getting client({})".format(request.status_code))
         return response_str
-
     
     def dataflows(self, to_file = None, from_file = None):
         """Index of available dataflows
@@ -210,6 +209,8 @@ class Repository(object):
         if self.version == '2_1':
             url = '/'.join([self.sdmx_url, 'datastructure', self.agencyID, 'DSD_' + flowRef])
             tree = self.query_rest(url, to_file = to_file, from_file = from_file)
+            parser = lxml.etree.XMLParser(ns_clean=True, recover=True, encoding='utf-8') 
+            tree = lxml.etree.fromstring(tree, parser=parser)
             codelists_path = ".//str:Codelists"
             codelist_path = ".//str:Codelist"
             name_path = ".//com:Name"
@@ -241,6 +242,8 @@ class Repository(object):
             description_path = ".//structure:Description"
             url = '/'.join([self.sdmx_url, 'KeyFamily', flowRef])
             tree = self.query_rest(url)
+            parser = lxml.etree.XMLParser(ns_clean=True, recover=True, encoding='utf-8') 
+            tree = lxml.etree.parse(tree, parser)
             self._codes = {}
             codelists = tree.xpath(codelists_path,
                                           namespaces=tree.nsmap)
@@ -263,9 +266,7 @@ class Repository(object):
         return self._codes
 
 
-    def data(self, flowRef, key, startperiod=None, endperiod=None, 
-        to_file = None, from_file = None, 
-        concat = False):
+    def raw_data(self, flowRef, key, startperiod=None, endperiod=None, to_file = None, from_file = None):
         """Get data
 
         :param flowRef: an identifier of the data
@@ -278,7 +279,6 @@ class Repository(object):
         :type endperiod: datetime.datetime()
         :param to_file: if it is a string, the xml file is, after parsing it, written to a file with this name. Default: None
         :param from_file: if it is a string, the xml file is read from a file with that name instead of requesting the data via http. Default: None
-        :param concat: If False, return a tuple (l, d) where l is a list of the series whose name attributes contain  the metadata as namedtuple, and d is a dict containing any global metadata. If True: return a tuple (df, d) where df is a pandas.DataFrame with hierarchical index generated from the metadata. Explore the structure by issuing 'df.columns.names' and 'df.columns.levels' The order of index levels is determined by the number of actual values found in the series' metadata for each key. If concat is a list of metadata keys, they determine the order of index levels.
         :param d: a dict of global metadata.    
 
         :return: tuple of the form (l, d) or (df, d) depending on the value of 'concat'.
@@ -286,7 +286,7 @@ class Repository(object):
        
         series_list = [] 
         
-        if self.    version == '2_1':
+        if self.version == '2_1':
             resource = 'data'
             if startperiod and endperiod:
                 query = '/'.join([resource, flowRef, key
@@ -296,39 +296,56 @@ class Repository(object):
                 query = '/'.join([resource, flowRef, key])
             url = '/'.join([self.sdmx_url,query])
             tree = self.query_rest(url, to_file = to_file, from_file = from_file)
+            parser = lxml.etree.XMLParser(ns_clean=True, recover=True, encoding='utf-8') 
+            tree = lxml.etree.fromstring(tree, parser=parser)
             GENERIC = '{'+tree.nsmap['generic']+'}'
             
+            raw_codes = {}
+            raw_dates = {}
+            raw_values = {}
+            raw_attributes = {}
             for series in tree.iterfind(".//generic:Series",
-                                             namespaces=tree.nsmap):
-                raw_dates = []
-                raw_values = []
-                raw_status = []
+                                        namespaces=tree.nsmap):
+                attributes = {}
+                values = []
+                dimensions = []
+                a_keys = set()
+                obs_nbr = 0
                 
                 for elem in series.iterchildren():
+                    a = {}
                     if elem.tag == GENERIC + 'SeriesKey':
-                        codes = {}
+                        codes = OrderedDict()
                         for value in elem.iter(GENERIC + "Value"):
                             codes[value.get('id')] = value.get('value')
                     elif elem.tag == GENERIC + 'Obs':
+                        a = {}
                         for elem1 in elem.iterchildren():
-                            observation_status = 'A'
+
                             if elem1.tag == GENERIC + 'ObsDimension':
-                                dimension = elem1.get('value')
-                                # I've commented this out as pandas.to_dates seems to do a better and much faster job.
-                                # dimension = date_parser(dimension, codes['FREQ'])
+                                dimensions.append(elem1.get('value'))
                             elif elem1.tag == GENERIC + 'ObsValue':
                                 value = elem1.get('value')
-                            elif elem1.tag == GENERIC + 'Attibutes':
-                                for elem2 in elem1.iter(".//generic:Value[@id='OBS_STATUS']",
-                                    namespaces=tree.nsmap):
-                                    observation_status = elem2.get('value')
-                        raw_dates.append(dimension)
-                        raw_values.append(value)
-                        raw_status.append(observation_status)
-                dates = pandas.to_datetime(raw_dates)
-                value_series = pandas.TimeSeries(raw_values, index = dates, dtype = 'float64', name = codes)
-                series_list.append(value_series)
-                
+                                values.append(value)
+                            elif elem1.tag == GENERIC + 'Attributes':
+                                for elem2 in elem1.iterchildren():
+                                    key = elem2.get('id') 
+                                    a[key] = elem2.get('value')
+                                    a_keys.add(key)
+                        if len(a):
+                            attributes[obs_nbr] = a
+                        obs_nbr += 1
+                key = ".".join(codes.values())
+                raw_codes[key] = codes
+                raw_dates[key] = dimensions
+                raw_values[key] = values
+                a = defaultdict(list)
+                for k in a_keys:
+                    a[k] = [None for v in values]
+                for i in attributes:
+                    for k in attributes[i]:
+                        a[k][i] = attributes[i][k]
+                raw_attributes[key] = a 
         elif self.version == '2_0':
             resource = 'GenericData'
             key__ = ''
@@ -344,48 +361,84 @@ class Repository(object):
                 query = resource + '?dataflow=' + flowRef + key
             url = '/'.join([self.sdmx_url,query])
             tree = self.query_rest(url)
+            parser = lxml.etree.XMLParser(ns_clean=True, recover=True, encoding='utf-8') 
+            tree = lxml.etree.parse(tree, parser)
 
+            raw_codes = {}
+            raw_dates = {}
+            raw_values = {}
+            raw_attributes = {}
             for series in tree.iterfind(".//generic:Series",
                                              namespaces=tree.nsmap):
-                raw_dates = []
-                raw_values = []
-                raw_status = []
-                
-                codes = {}
+
+                attributes = {}
+                values = []
+                dimensions = []
+
                 for codes_ in series.iterfind(".//generic:SeriesKey",
-                                           namespaces=tree.nsmap):
+                                              namespaces=tree.nsmap):
+                    codes = OrderedDict()
                     for key in codes_.iterfind(".//generic:Value",
                                                namespaces=tree.nsmap):
                         codes[key.get('concept')] = key.get('value')
                 for observation in series.iterfind(".//generic:Obs",
                                                    namespaces=tree.nsmap):
-                    dimensions = observation.xpath(".//generic:Time",
+                    time = observation.xpath(".//generic:Time",
                                                    namespaces=tree.nsmap)
+                    dimensions.append(time.get('value'))
                     # I've commented this out as pandas.to_dates seems to do a better job.
                     # dimension = date_parser(dimensions[0].text, codes['FREQ'])
-                    values = observation.xpath(".//generic:ObsValue",
+                    obsvalue = observation.xpath(".//generic:ObsValue",
                                                namespaces=tree.nsmap)
-                    value = values[0].get('value')
-                    observation_status = 'A'
+                    value = obsvalue[0].get('value')
+                    values.append(value)
+                    attributes = {}
                     for attribute in \
                         observation.iterfind(".//generic:Attributes",
                                              namespaces=tree.nsmap):
-                        for observation_status_ in \
+                        for value_ in \
                             attribute.xpath(
-                                ".//generic:Value[@concept='OBS_STATUS']",
+                                ".//generic:Value",
                                 namespaces=tree.nsmap):
-                            if observation_status_:
-                                observation_status \
-                                    = observation_status_.get('value')
-
-                        raw_dates.append(dimension)
-                        raw_values.append(value)
-                        raw_status.append(observation_status)
-                dates = pandas.to_datetime(raw_dates)
-                value_series = pandas.TimeSeries(raw_values, index = dates, dtype = 'float64', name = codes)
-                series_list.append(value_series)
-              
+                            attributes[value_.get('concept')] = value_.get('value')
+                key = ".".join(codes.values())
+                raw_codes[key] = codes
+                raw_dates[key] = dimensions
+                raw_value[key] = values
+                raw_attributes[key] = attributes
         else: raise ValueError("SDMX version must be either '2_0' or '2_1'. %s given." % self.version)
+        return (raw_values, raw_dates, raw_attributes, raw_codes)
+
+    def data(self, flowRef, key, startperiod=None, endperiod=None, 
+        to_file = None, from_file = None, 
+        concat = False):
+        """Get data
+        
+        :param flowRef: an identifier of the data
+        :type flowRef: str
+        :param key: a filter using codes (for example, .... for no filter ...BE for all the series related to Belgium) if using v2_1. In 2_0, you should be providing a dict following that syntax {dimension:value}
+        :type key: str or dict
+        :param startperiod: the starting date of the time series that will be downloaded (optional, default: None)
+        :type startperiod: datetime.datetime()
+        :param endperiod: the ending date of the time series that will be downloaded (optional, default: None)
+        :type endperiod: datetime.datetime()
+        :param to_file: if it is a string, the xml file is, after parsing it, written to a file with this name. Default: None
+        :param from_file: if it is a string, the xml file is read from a file with that name instead of requesting the data via http. Default: None
+        :param concat: If False, return a tuple (l, d) where l is a list of the series whose name attributes contain  the metadata as namedtuple, and d is a dict containing any global metadata. If True: return a tuple (df, d) where df is a pandas.DataFrame with hierarchical index generated from the metadata. Explore the structure by issuing 'df.columns.names' and 'df.columns.levels' The order of index levels is determined by the number of actual values found in the series' metadata for each key. If concat is a list of metadata keys, they determine the order of index levels.
+        :param d: a dict of global metadata.    
+
+        :return: tuple of the form (l, d) or (df, d) depending on the value of 'concat'.
+        """
+        (raw_values, raw_dates, raw_attributes, raw_codes) = self.raw_data(flowRef,key,startperiod,endperiod, 
+                                                                       to_file,from_file)  
+
+        # make pandas
+        series_list = []
+        for key in raw_values:
+            dates = pandas.to_datetime(raw_dates[key])
+            value_series = pandas.TimeSeries(raw_values[key], index = dates, dtype = 'float64', name = raw_codes[key])
+            series_list.append(value_series)
+
         # Handle empty lists
         if series_list == []: 
             if concat:
@@ -434,8 +487,9 @@ class Repository(object):
                 for k in global_codes: s.name.pop(k)
                 s.name = to_namedtuple([(k, s.name[k]) for k in sorted_keys])             
             return series_list, global_codes
-    
-    
+
+
+
 eurostat = Repository('http://www.ec.europa.eu/eurostat/SDMX/diss-web/rest',
                      '2_1','ESTAT')
 eurostat_test = Repository('http://localhost:8800/eurostat',
@@ -454,3 +508,6 @@ __all__ = ('ecb','ilo','fao','eurostat','Repository')
 # d=eurostat.data('ei_nagt_q_r2', '', concat = False, from_file = 'ESTAT.sdmx')
 # d = eurostat.dataflows()
         
+if __name__ == "__main__":
+    eurostat_test.raw_data('ei_bsco_q','....')
+    eurostat_test.data('ei_bsco_q','....')
