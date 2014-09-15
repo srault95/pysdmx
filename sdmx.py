@@ -6,6 +6,24 @@
     :synopsis: Python interface for SDMX
 
 .. :moduleauthor :: Widukind team <widukind-dev@cepremap.org>
+.. :doctest::
+
+    >>> df = eurostat.data('ei_bsco_q','.BS-IBC-NTY.SA..FR',startperiod="2008",endperiod="2009")
+    >>> df[1] == {'FREQ': 'Q', 'UNIT': 'BAL', 'INDIC': 'BS-IBC-NTY', 'GEO': 'FR', 'S_ADJ': 'SA'}
+    True
+    >>> df[0]
+    [2009-Q4   -77.8
+    2009-Q3   -78.2
+    2009-Q2   -74.5
+    2009-Q1   -77.9
+    2008-Q4   -76.4
+    2008-Q3   -80.1
+    2008-Q2   -73.6
+    2008-Q1   -76.0
+    Name: (), dtype: float64]
+    >>> eurostat.raw_data('ei_bsco_q','.BS-IBC-NTY.SA..FR',startperiod="2008",endperiod="2009")
+    ({'BAL.BS-IBC-NTY.SA.FR.Q': ['-77.8', '-78.2', '-74.5', '-77.9', '-76.4', '-80.1', '-73.6', '-76.0']}, {'BAL.BS-IBC-NTY.SA.FR.Q': ['2009-Q4', '2009-Q3', '2009-Q2', '2009-Q1', '2008-Q4', '2008-Q3', '2008-Q2', '2008-Q1']}, {'BAL.BS-IBC-NTY.SA.FR.Q': defaultdict(<class 'list'>, {})}, {'BAL.BS-IBC-NTY.SA.FR.Q': OrderedDict([('UNIT', 'BAL'), ('INDIC', 'BS-IBC-NTY'), ('S_ADJ', 'SA'), ('GEO', 'FR'), ('FREQ', 'Q')])})
+
 """
 
 import requests
