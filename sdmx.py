@@ -221,8 +221,6 @@ class Repository(object):
         if self.version == '2_1':
             url = '/'.join([self.sdmx_url, 'datastructure', self.agencyID, 'DSD_' + flowRef])
             tree = self.query_rest(url, to_file = to_file, from_file = from_file)
-            parser = lxml.etree.XMLParser(ns_clean=True, recover=True, encoding='utf-8') 
-            tree = lxml.etree.fromstring(tree, parser=parser)
             codelists_path = ".//str:Codelists"
             codelist_path = ".//str:Codelist"
             name_path = ".//com:Name"
@@ -254,8 +252,6 @@ class Repository(object):
             description_path = ".//structure:Description"
             url = '/'.join([self.sdmx_url, 'KeyFamily', flowRef])
             tree = self.query_rest(url)
-            parser = lxml.etree.XMLParser(ns_clean=True, recover=True, encoding='utf-8') 
-            tree = lxml.etree.parse(tree, parser)
             self._codes = {}
             codelists = tree.xpath(codelists_path,
                                           namespaces=tree.nsmap)
