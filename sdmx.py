@@ -67,7 +67,6 @@ def to_namedtuple(mapping):
     return code_tuple
             
         
-        
         # This function is no longer used as pandas.to_dates seems to be much faster and powerful. 
         # Remove it after more testing if it is really not needed. 
 def date_parser(date, frequency):
@@ -124,10 +123,6 @@ class Repository(object):
         if to_file:
             with open(to_file, 'wb') as f:
                 f.write(response_str)
-                                     
-                    
-        
-    
     
     def query_rest(self, url, to_file = None, from_file = None):
         """Retrieve SDMX messages.
@@ -504,7 +499,6 @@ class Repository(object):
                 for k in global_codes: s.name.pop(k)
                 s.name = to_namedtuple([(k, s.name[k]) for k in sorted_keys])             
             return series_list, global_codes
-
 
 
 eurostat = Repository('http://www.ec.europa.eu/eurostat/SDMX/diss-web/rest',
