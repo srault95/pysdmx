@@ -108,6 +108,7 @@ class Repository(object):
         self.agencyID = agencyID
         self._dataflows = None
         self.version = version
+        self.dataflow_url = '/'.join([self.sdmx_url, 'dataflow', self.agencyID, 'all', 'latest'])
 
     def request(self, url, to_file = None, from_file = None):
         '''
@@ -168,7 +169,7 @@ class Repository(object):
                 raise ValueError("Error getting client({})".format(request.status_code))      
         else:
             raise ValueError("Error getting client({})".format(request.status_code))
-        return response_str
+        return lxml.etree.fromstring(response_str)
     
     def dataflows(self, to_file = None, from_file = None):
         """Index of available dataflows
@@ -176,8 +177,7 @@ class Repository(object):
         :type: dict"""
         if not self._dataflows:
             if self.version == '2_1':
-                url = '/'.join([self.sdmx_url, 'dataflow', self.agencyID, 'all', 'latest'])
-                tree = self.query_rest(url, to_file = to_file, from_file = from_file)
+                tree = self.query_rest(self.dataflow_url, to_file = to_file, from_file = from_file)
                 dataflow_path = ".//str:Dataflow"
                 name_path = ".//com:Name"
                 if not self._dataflows:
@@ -195,8 +195,7 @@ class Repository(object):
                             titles[language] = title.text
                         self._dataflows[id] = (agencyID, version, titles)
             if self.version == '2_0':
-                url = '/'.join([self.sdmx_url, 'Dataflow'])
-                tree = self.query_rest(url, to_file = to_file, from_file = from_file)
+                tree = self.query_rest(self.dataflow_url, to_file = to_file, from_file = from_file)
                 dataflow_path = ".//structure:Dataflow"
                 name_path = ".//structure:Name"
                 keyid_path = ".//structure:KeyFamilyID"
@@ -514,6 +513,7 @@ eurostat_test = Repository('http://localhost:8800/eurostat',
                      '2_1','ESTAT')
 ecb = Repository('http://sdw-ws.ecb.europa.eu',
                      '2_0','ECB')
+ecb.dataflow_url = 'http://sdw-ws.ecb.europa.eu/Dataflow'
 ilo = Repository('http://www.ilo.org/ilostat/sdmx/ws/rest/',
                      '2_1','ILO')
 fao = Repository('http://data.fao.org/sdmx',
