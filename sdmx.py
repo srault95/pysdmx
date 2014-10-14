@@ -260,7 +260,7 @@ class Repository(object):
             codelist_path = ".//structure:CodeList"
             code_path = ".//structure:Code"
             description_path = ".//structure:Description"
-            url = '/'.join([self.sdmx_url, 'KeyFamily', flowRef])
+            url = '/'.join([self.sdmx_url, 'KeyFamily', self.agencyID + '_' + flowRef])
             tree = self.query_rest(url)
             self._codes = {}
             codelists = tree.xpath(codelists_path,
