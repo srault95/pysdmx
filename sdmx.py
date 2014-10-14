@@ -34,6 +34,7 @@ from io import BytesIO
 import re
 import zipfile
 from collections import OrderedDict, namedtuple, defaultdict
+import logging
 
 
 # Allow easy checking for existing namedtuple classes that can be reused for column metadata  
@@ -103,6 +104,14 @@ class Repository(object):
     :type agencyID: str
     """
     def __init__(self, sdmx_url, version, agencyID):
+        self.lgr = logging.getLogger('pysdmx')
+        self.lgr.setLevel(logging.DEBUG)
+        self.fh = logging.FileHandler('pysdmx.log')
+        self.fh.setLevel(logging.DEBUG)
+        self.frmt = logging.Formatter(
+            '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        self.fh.setFormatter(self.frmt)
+        self.lgr.addHandler(self.fh)
         self.sdmx_url = sdmx_url
         self.agencyID = agencyID
         self._dataflows = None
@@ -132,6 +141,7 @@ class Repository(object):
         :return: An lxml.etree.ElementTree() of the SDMX message
         """
         # Fetch data from the provider    
+        self.lgr.info('Requesting %s', url)
         request = requests.get(url, timeout= 20)
         if request.status_code == requests.codes.ok:
             response_str = request.text.encode('utf-8')
@@ -369,8 +379,6 @@ class Repository(object):
                 query = resource + '?dataflow=' + flowRef + key
             url = '/'.join([self.sdmx_url,query])
             tree = self.query_rest(url)
-            parser = lxml.etree.XMLParser(ns_clean=True, recover=True, encoding='utf-8') 
-            tree = lxml.etree.parse(tree, parser)
 
             raw_codes = {}
             raw_dates = {}
@@ -393,6 +401,7 @@ class Repository(object):
                                                    namespaces=tree.nsmap):
                     time = observation.xpath(".//generic:Time",
                                                    namespaces=tree.nsmap)
+                    self.lgr.debug('Time vector %s', time)
                     dimensions.append(time.get('value'))
                     # I've commented this out as pandas.to_dates seems to do a better job.
                     # dimension = date_parser(dimensions[0].text, codes['FREQ'])
