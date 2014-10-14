@@ -386,23 +386,24 @@ class Repository(object):
             raw_attributes = {}
             for series in tree.iterfind(".//generic:Series",
                                              namespaces=tree.nsmap):
-
+                self.lgr.debug('Extracting the series from the SDMX message')
                 attributes = {}
                 values = []
                 dimensions = []
-
                 for codes_ in series.iterfind(".//generic:SeriesKey",
                                               namespaces=tree.nsmap):
                     codes = OrderedDict()
                     for key in codes_.iterfind(".//generic:Value",
                                                namespaces=tree.nsmap):
                         codes[key.get('concept')] = key.get('value')
+                    self.lgr.debug('Code %s', codes)
                 for observation in series.iterfind(".//generic:Obs",
                                                    namespaces=tree.nsmap):
                     time = observation.xpath(".//generic:Time",
                                                    namespaces=tree.nsmap)
+                    time = time[0].text
                     self.lgr.debug('Time vector %s', time)
-                    dimensions.append(time.get('value'))
+                    dimensions.append(time)
                     # I've commented this out as pandas.to_dates seems to do a better job.
                     # dimension = date_parser(dimensions[0].text, codes['FREQ'])
                     obsvalue = observation.xpath(".//generic:ObsValue",
@@ -421,7 +422,8 @@ class Repository(object):
                 key = ".".join(codes.values())
                 raw_codes[key] = codes
                 raw_dates[key] = dimensions
-                raw_value[key] = values
+                print(dimensions)
+                raw_values[key] = values
                 raw_attributes[key] = attributes
         else: raise ValueError("SDMX version must be either '2_0' or '2_1'. %s given." % self.version)
         return (raw_values, raw_dates, raw_attributes, raw_codes)
