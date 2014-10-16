@@ -117,6 +117,7 @@ class Repository(object):
         self._dataflows = None
         self.version = version
         self.dataflow_url = '/'.join([self.sdmx_url, 'dataflow', self.agencyID, 'all', 'latest'])
+        self.category_scheme_url = '/'.join([self.sdmx_url, 'CategoryScheme'])
 
     def request(self, url, to_file = None, from_file = None):
         '''
@@ -175,6 +176,32 @@ class Repository(object):
         else:
             raise ValueError("Error getting client({})".format(request.status_code))
         return lxml.etree.fromstring(response_str)
+
+    def categories(self):
+        """Index of available categories
+
+        :type: dict"""
+        def walk_category(category):
+            category_ = {}
+            name = category.xpath('./structure:Name',namespaces=category.nsmap)
+            category_['name'] = name[0].text
+            flowrefs = category.xpath(
+                './structure:DataflowRef/structure:DataflowID',
+                namespaces=category.nsmap)
+            if flowrefs != []:
+                category_['flowrefs'] = [ flowref.text for flowref in flowrefs ]
+            subcategories = []
+            for subcategory in category.xpath('./structure:Category',
+                                              namespaces=category.nsmap):
+                subcategories.append(walk_category(subcategory))
+            if subcategories != []:
+                category_['subcategories'] = subcategories
+            return category_
+        tree = self.query_rest(self.category_scheme_url, to_file = None,
+                               from_file = None)
+        xml_categories = tree.xpath('.//structure:CategoryScheme',
+                                    namespaces=tree.nsmap)
+        return walk_category(xml_categories[0])
     
     def dataflows(self, to_file = None, from_file = None):
         """Index of available dataflows
