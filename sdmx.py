@@ -177,6 +177,7 @@ class Repository(object):
             raise ValueError("Error getting client({})".format(request.status_code))
         return lxml.etree.fromstring(response_str)
 
+    @property
     def categories(self):
         """Index of available categories
 
