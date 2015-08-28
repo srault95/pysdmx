@@ -450,16 +450,33 @@ class Repository(object):
                 key = ".".join(codes.values())
                 raw_codes[key] = codes
                 raw_dates[key] = dimensions
-                print(dimensions)
                 raw_values[key] = values
                 raw_attributes[key] = attributes
         else: raise ValueError("SDMX version must be either '2_0' or '2_1'. %s given." % self.version)
         return (raw_values, raw_dates, raw_attributes, raw_codes)
 
+    def data_for_computers(self, flowRef, key, startperiod=None, endperiod=None):
+        """Get data in a format that is easy to use programmatically
+        
+        :param flowRef: an identifier of the data
+        :type flowRef: str
+        :param key: a filter using codes (for example, .... for no filter ...BE for all the series related to Belgium) if using v2_1. In 2_0, you should be providing a dict following that syntax {dimension:value}
+        :type key: str or dict
+        :param startperiod: the starting date of the time series that will be downloaded (optional, default: None)
+        :type startperiod: datetime.datetime()
+        :param endperiod: the ending date of the time series that will be downloaded (optional, default: None)
+        :type endperiod: datetime.datetime()
+        :param d: a dict of global metadata.    
+
+        :return: a list of tuples
+        """
+        (raw_values, raw_dates, raw_attributes, raw_codes) = self.raw_data(flowRef,key,startperiod,endperiod)  
+
+
     def data(self, flowRef, key, startperiod=None, endperiod=None, 
         to_file = None, from_file = None, 
         concat = False):
-        """Get data
+        """Get data in a format that is easy to use interactively
         
         :param flowRef: an identifier of the data
         :type flowRef: str
