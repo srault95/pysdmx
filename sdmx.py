@@ -204,7 +204,7 @@ class Repository(object):
                                     namespaces=tree.nsmap)
         return walk_category(xml_categories[0])
     
-    def dataflows(self, to_file = None, from_file = None):
+    def dataflows(self, flowref=None, to_file = None, from_file = None):
         """Index of available dataflows
 
         :type: dict"""
@@ -228,7 +228,7 @@ class Repository(object):
                             titles[language] = title.text
                         self._dataflows[id] = (agencyID, version, titles)
             if self.version == '2_0':
-                tree = self.query_rest(self.dataflow_url, to_file = to_file, from_file = from_file)
+                tree = self.query_rest(self.dataflow_url+'/'+str(flowref), to_file = to_file, from_file = from_file)
                 dataflow_path = ".//structure:Dataflow"
                 name_path = ".//structure:Name"
                 keyid_path = ".//structure:KeyFamilyID"
@@ -560,6 +560,7 @@ eurostat_test = Repository('http://localhost:8800/eurostat',
 ecb = Repository('http://sdw-ws.ecb.europa.eu',
                      '2_0','ECB')
 ecb.dataflow_url = 'http://sdw-ws.ecb.europa.eu/Dataflow'
+ecb2_1 = Repository('https://sdw-wsrest.ecb.europa.eu/service/', '2_1', 'ECB')
 ilo = Repository('http://www.ilo.org/ilostat/sdmx/ws/rest/',
                      '2_1','ILO')
 fao = Repository('http://data.fao.org/sdmx',

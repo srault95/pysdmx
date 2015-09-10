@@ -1,4 +1,5 @@
 import unittest
+from pprint import pprint
 import sdmx
 
 class EcbTest(unittest.TestCase):
@@ -2155,7 +2156,12 @@ class EcbTest(unittest.TestCase):
                                '6': 'Millions',
                                '9': 'Billions'}}
         self.assertEqual(sdmx.ecb.codes('EXR1') ,model)
+    def test_specific_dataflow(self):
+        model ={'ECB_ILM1': ('ECB',
+                                           '1.0',
+                                           {'en': 'Internal Liquidity Management  - Minimum reserves '
+                                                                 'and liquidity'})}
+        self.assertEqual(sdmx.ecb.dataflows('2034468') ,model)
 
 if __name__ == '__main__':
     unittest.main()
-                
