@@ -208,44 +208,41 @@ class Repository(object):
         """Index of available dataflows
 
         :type: dict"""
-        if not self._dataflows:
-            if self.version == '2_1':
-                tree = self.query_rest(self.dataflow_url, to_file = to_file, from_file = from_file)
-                dataflow_path = ".//str:Dataflow"
-                name_path = ".//com:Name"
-                if not self._dataflows:
-                    self._dataflows = {}
-                    for dataflow in tree.iterfind(dataflow_path,
-                                                       namespaces=tree.nsmap):
-                        id = dataflow.get('id')
-                        agencyID = dataflow.get('agencyID')
-                        version = dataflow.get('version')
-                        titles = {}
-                        for title in dataflow.iterfind(name_path,
-                                                       namespaces=tree.nsmap):
-                            language = title.values()
-                            language = language[0]
-                            titles[language] = title.text
-                        self._dataflows[id] = (agencyID, version, titles)
-            if self.version == '2_0':
-                tree = self.query_rest(self.dataflow_url+'/'+str(flowref), to_file = to_file, from_file = from_file)
-                dataflow_path = ".//structure:Dataflow"
-                name_path = ".//structure:Name"
-                keyid_path = ".//structure:KeyFamilyID"
-                if not self._dataflows:
-                    self._dataflows = {}
-                    for dataflow in tree.iterfind(dataflow_path,
-                                                       namespaces=tree.nsmap):
-                        for id in dataflow.iterfind(keyid_path,
-                                                       namespaces=tree.nsmap):
-                            id = id.text
-                        agencyID = dataflow.get('agencyID')
-                        version = dataflow.get('version')
-                        titles = {}
-                        for title in dataflow.iterfind(name_path,
-                                                       namespaces=tree.nsmap):
-                            titles['en'] = title.text
-                        self._dataflows[id] = (agencyID, version, titles)
+        if self.version == '2_1':
+            tree = self.query_rest(self.dataflow_url, to_file = to_file, from_file = from_file)
+            dataflow_path = ".//str:Dataflow"
+            name_path = ".//com:Name"
+            self._dataflows = {}
+            for dataflow in tree.iterfind(dataflow_path,
+                                               namespaces=tree.nsmap):
+                id = dataflow.get('id')
+                agencyID = dataflow.get('agencyID')
+                version = dataflow.get('version')
+                titles = {}
+                for title in dataflow.iterfind(name_path,
+                                               namespaces=tree.nsmap):
+                    language = title.values()
+                    language = language[0]
+                    titles[language] = title.text
+                self._dataflows[id] = (agencyID, version, titles)
+        if self.version == '2_0':
+            tree = self.query_rest(self.dataflow_url+'/'+str(flowref), to_file = to_file, from_file = from_file)
+            dataflow_path = ".//structure:Dataflow"
+            name_path = ".//structure:Name"
+            keyid_path = ".//structure:KeyFamilyID"
+            self._dataflows = {}
+            for dataflow in tree.iterfind(dataflow_path,
+                                               namespaces=tree.nsmap):
+                for id in dataflow.iterfind(keyid_path,
+                                               namespaces=tree.nsmap):
+                    id = id.text
+                agencyID = dataflow.get('agencyID')
+                version = dataflow.get('version')
+                titles = {}
+                for title in dataflow.iterfind(name_path,
+                                               namespaces=tree.nsmap):
+                    titles['en'] = title.text
+                self._dataflows[id] = (agencyID, version, titles)
         return self._dataflows
 
     def codes(self, flowRef, to_file = None, from_file = None):
@@ -342,8 +339,8 @@ class Repository(object):
                 query = '/'.join([resource, flowRef, key])
             url = '/'.join([self.sdmx_url,query])
             tree = self.query_rest(url, to_file = to_file, from_file = from_file)
-            parser = lxml.etree.XMLParser(ns_clean=True, recover=True, encoding='utf-8') 
-            tree = lxml.etree.fromstring(tree, parser=parser)
+            #parser = lxml.etree.XMLParser(ns_clean=True, recover=True, encoding='utf-8') 
+            #tree = lxml.etree.fromstring(tree, parser=parser)
             GENERIC = '{'+tree.nsmap['generic']+'}'
             
             raw_codes = {}
@@ -555,6 +552,7 @@ class Repository(object):
 
 eurostat = Repository('http://www.ec.europa.eu/eurostat/SDMX/diss-web/rest',
                      '2_1','ESTAT')
+eurostat.category_scheme_url = 'http://sdw-ws.ecb.europa.eu/Dataflow'
 eurostat_test = Repository('http://localhost:8800/eurostat',
                      '2_1','ESTAT')
 ecb = Repository('http://sdw-ws.ecb.europa.eu',
