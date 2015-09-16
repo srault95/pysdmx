@@ -119,22 +119,14 @@ class Repository(object):
         self.dataflow_url = '/'.join([self.sdmx_url, 'dataflow', self.agencyID, 'all', 'latest'])
         self.category_scheme_url = '/'.join([self.sdmx_url, 'CategoryScheme'])
 
-    def request(self, url, to_file = None, from_file = None):
+    def request(self, url):
         '''
         return data
         '''
         parser = lxml.etree.XMLParser(
             ns_clean=True, recover=True, encoding='utf-8')
-
-        if from_file:
-            # Load data from local file and parse it. 
-            with open(from_file, 'rb') as f:
-                return lxml.etree.fromstring(f.read(), parser = parser) 
-        if to_file:
-            with open(to_file, 'wb') as f:
-                f.write(response_str)
     
-    def query_rest(self, url, to_file = None, from_file = None):
+    def query_rest(self, url):
         """Retrieve SDMX messages.
 
         :param url: The URL of the message.
@@ -198,18 +190,17 @@ class Repository(object):
             if subcategories != []:
                 category_['subcategories'] = subcategories
             return category_
-        tree = self.query_rest(self.category_scheme_url, to_file = None,
-                               from_file = None)
+        tree = self.query_rest(self.category_scheme_url)
         xml_categories = tree.xpath('.//structure:CategoryScheme',
                                     namespaces=tree.nsmap)
         return walk_category(xml_categories[0])
     
-    def dataflows(self, flowref=None, to_file = None, from_file = None):
+    def dataflows(self, flowref=None):
         """Index of available dataflows
 
         :type: dict"""
         if self.version == '2_1':
-            tree = self.query_rest(self.dataflow_url, to_file = to_file, from_file = from_file)
+            tree = self.query_rest(self.dataflow_url)
             dataflow_path = ".//str:Dataflow"
             name_path = ".//com:Name"
             self._dataflows = {}
@@ -226,7 +217,7 @@ class Repository(object):
                     titles[language] = title.text
                 self._dataflows[id] = (agencyID, version, titles)
         if self.version == '2_0':
-            tree = self.query_rest(self.dataflow_url+'/'+str(flowref), to_file = to_file, from_file = from_file)
+            tree = self.query_rest(self.dataflow_url+'/'+str(flowref))
             dataflow_path = ".//structure:Dataflow"
             name_path = ".//structure:Name"
             keyid_path = ".//structure:KeyFamilyID"
@@ -245,7 +236,7 @@ class Repository(object):
                 self._dataflows[id] = (agencyID, version, titles)
         return self._dataflows
 
-    def codes(self, flowRef, to_file = None, from_file = None):
+    def codes(self, flowRef):
         """Data definitions
 
         Returns a dictionnary describing the available dimensions for a specific flowRef.
@@ -255,7 +246,7 @@ class Repository(object):
         :return: dict"""
         if self.version == '2_1':
             url = '/'.join([self.sdmx_url, 'datastructure', self.agencyID, 'DSD_' + flowRef])
-            tree = self.query_rest(url, to_file = to_file, from_file = from_file)
+            tree = self.query_rest(url)
             codelists_path = ".//str:Codelists"
             codelist_path = ".//str:Codelist"
             name_path = ".//com:Name"
@@ -309,7 +300,7 @@ class Repository(object):
         return self._codes
 
 
-    def raw_data(self, flowRef, key, startperiod=None, endperiod=None, to_file = None, from_file = None):
+    def raw_data(self, flowRef, key, startperiod=None, endperiod=None):
         """Get data
 
         :param flowRef: an identifier of the data
@@ -320,8 +311,6 @@ class Repository(object):
         :type startperiod: datetime.datetime()
         :param endperiod: the ending date of the time series that will be downloaded (optional, default: None)
         :type endperiod: datetime.datetime()
-        :param to_file: if it is a string, the xml file is, after parsing it, written to a file with this name. Default: None
-        :param from_file: if it is a string, the xml file is read from a file with that name instead of requesting the data via http. Default: None
         :param d: a dict of global metadata.    
 
         :return: tuple of the form (l, d) or (df, d) depending on the value of 'concat'.
@@ -338,7 +327,7 @@ class Repository(object):
             else:
                 query = '/'.join([resource, flowRef, key])
             url = '/'.join([self.sdmx_url,query])
-            tree = self.query_rest(url, to_file = to_file, from_file = from_file)
+            tree = self.query_rest(url)
             #parser = lxml.etree.XMLParser(ns_clean=True, recover=True, encoding='utf-8') 
             #tree = lxml.etree.fromstring(tree, parser=parser)
             GENERIC = '{'+tree.nsmap['generic']+'}'
@@ -471,7 +460,6 @@ class Repository(object):
 
 
     def data(self, flowRef, key, startperiod=None, endperiod=None, 
-        to_file = None, from_file = None, 
         concat = False):
         """Get data in a format that is easy to use interactively
         
@@ -483,15 +471,12 @@ class Repository(object):
         :type startperiod: datetime.datetime()
         :param endperiod: the ending date of the time series that will be downloaded (optional, default: None)
         :type endperiod: datetime.datetime()
-        :param to_file: if it is a string, the xml file is, after parsing it, written to a file with this name. Default: None
-        :param from_file: if it is a string, the xml file is read from a file with that name instead of requesting the data via http. Default: None
         :param concat: If False, return a tuple (l, d) where l is a list of the series whose name attributes contain  the metadata as namedtuple, and d is a dict containing any global metadata. If True: return a tuple (df, d) where df is a pandas.DataFrame with hierarchical index generated from the metadata. Explore the structure by issuing 'df.columns.names' and 'df.columns.levels' The order of index levels is determined by the number of actual values found in the series' metadata for each key. If concat is a list of metadata keys, they determine the order of index levels.
         :param d: a dict of global metadata.    
 
         :return: tuple of the form (l, d) or (df, d) depending on the value of 'concat'.
         """
-        (raw_values, raw_dates, raw_attributes, raw_codes) = self.raw_data(flowRef,key,startperiod,endperiod, 
-                                                                       to_file,from_file)  
+        (raw_values, raw_dates, raw_attributes, raw_codes) = self.raw_data(flowRef,key,startperiod,endperiod)  
 
         # make pandas
         series_list = []
@@ -566,11 +551,6 @@ fao = Repository('http://data.fao.org/sdmx',
 
 __all__ = ('ecb','ilo','fao','eurostat','Repository')
 
-# This is for easier testing during development. Run it as a script. 
-# Play around with the args concat, to_file and from_file, and remove this line before release.
-# d=eurostat.data('ei_nagt_q_r2', '', concat = False, from_file = 'ESTAT.sdmx')
-# d = eurostat.dataflows()
-        
 if __name__ == "__main__":
     eurostat_test.raw_data('ei_bsco_q','....')
     eurostat_test.data('ei_bsco_q','....')
