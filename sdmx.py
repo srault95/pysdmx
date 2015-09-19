@@ -176,23 +176,41 @@ class Repository(object):
         :type: dict"""
         def walk_category(category):
             category_ = {}
-            name = category.xpath('./structure:Name',namespaces=category.nsmap)
-            category_['name'] = name[0].text
-            flowrefs = category.xpath(
-                './structure:DataflowRef/structure:DataflowID',
-                namespaces=category.nsmap)
-            if flowrefs != []:
-                category_['flowrefs'] = [ flowref.text for flowref in flowrefs ]
-            subcategories = []
-            for subcategory in category.xpath('./structure:Category',
-                                              namespaces=category.nsmap):
-                subcategories.append(walk_category(subcategory))
-            if subcategories != []:
-                category_['subcategories'] = subcategories
+            if self.version == '2_0':
+                name = category.xpath('./structure:Name',namespaces=category.nsmap)
+                category_['name'] = name[0].text
+                flowrefs = category.xpath(
+                    './structure:DataflowRef/structure:DataflowID',
+                    namespaces=category.nsmap)
+                if flowrefs != []:
+                    category_['flowrefs'] = [ flowref.text for flowref in flowrefs ]
+                subcategories = []
+                for subcategory in category.xpath('./structure:Category',
+                                                  namespaces=category.nsmap):
+                    subcategories.append(walk_category(subcategory))
+                if subcategories != []:
+                    category_['subcategories'] = subcategories
+            elif self.version == '2_1':
+                name = category.xpath("./com:Name[@xml:lang='en']",namespaces=category.nsmap)
+                category_['name'] = name[0].text
+                category_['id'] = category.attrib['id']
+                subcategories = []
+                for subcategory in category.xpath('./str:Category',
+                                                  namespaces=category.nsmap):
+                    subcategories.append(walk_category(subcategory))
+                if subcategories != []:
+                    category_['subcategories'] = subcategories
             return category_
-        tree = self.query_rest(self.category_scheme_url)
-        xml_categories = tree.xpath('.//structure:CategoryScheme',
-                                    namespaces=tree.nsmap)
+
+        if self.version == '2_0':
+            tree = self.query_rest(self.category_scheme_url)
+            xml_categories = tree.xpath('.//structure:CategoryScheme',
+                                        namespaces=tree.nsmap)
+        elif self.version == '2_1':
+            tree = self.query_rest(self.sdmx_url + '/categoryscheme')
+            xml_categories = tree.xpath('.//str:CategoryScheme',
+                                        namespaces=tree.nsmap)
+            
         return walk_category(xml_categories[0])
     
     def dataflows(self, flowref=None):
@@ -548,8 +566,10 @@ ilo = Repository('http://www.ilo.org/ilostat/sdmx/ws/rest/',
                      '2_1','ILO')
 fao = Repository('http://data.fao.org/sdmx',
                      '2_1','FAO')
+insee = Repository('http://www.bdm.insee.fr/series/sdmx','2_1','INSEE')
+insee.category_scheme_url = 'http://www.bdm.insee.fr/series/sdmx/categoryscheme'
 
-__all__ = ('ecb','ilo','fao','eurostat','Repository')
+__all__ = ('ecb','ilo','fao','eurostat','insee','Repository')
 
 if __name__ == "__main__":
     eurostat_test.raw_data('ei_bsco_q','....')
