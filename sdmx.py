@@ -513,12 +513,10 @@ class Repository(object):
                 raw_dates[code] = [dates[position] for position in series_dates]
                 raw_values[code] = [observations[key][0] for key in list(observations.keys())]
                 raw_attributes[code] = [observations[key][1] for key in list(observations.keys())]
-                print(key.split(':'))
                 print(message_dict['structure']['dimensions']['series'])
-                print([i for i in zip(key.split(':'),message_dict['structure']['dimensions']['series'])])
                 raw_codes[code] = {}
                 for code_,dim in zip(key.split(':'),message_dict['structure']['dimensions']['series']):
-                    raw_codes[code][dim['values'][int(code_)]['id']] = dim['name'] 
+                    raw_codes[code][dim['name']] = dim['values'][int(code_)]['id']
         return (raw_values, raw_dates, raw_attributes, raw_codes)
 
     def data(self, flowRef, key, startperiod=None, endperiod=None, 
