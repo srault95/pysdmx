@@ -105,7 +105,7 @@ class Repository(object):
     :ivar agencyID: An identifier of the statistical provider.
     :type agencyID: str
     """
-    def __init__(self, sdmx_url, format, version, agencyID):
+    def __init__(self, sdmx_url, format, version, agencyID, timeout=20):
         self.lgr = logging.getLogger('pysdmx')
         self.lgr.setLevel(logging.DEBUG)
         self.fh = logging.FileHandler('pysdmx.log')
@@ -117,6 +117,7 @@ class Repository(object):
         self.sdmx_url = sdmx_url
         self.format = format
         self.agencyID = agencyID
+        self.timeout = timeout
         self._dataflows = None
         self.version = version
         if self.format == 'xml':
@@ -136,7 +137,7 @@ class Repository(object):
         """
         # Fetch data from the provider    
         self.lgr.info('Requesting %s', url)
-        request = requests.get(url, timeout= 50)
+        request = requests.get(url, timeout=self.timeout)
         return json.load(StringIO(request.text), object_pairs_hook=OrderedDict)
     
     def query_rest(self, url):
@@ -148,7 +149,7 @@ class Repository(object):
         """
         # Fetch data from the provider    
         self.lgr.info('Requesting %s', url)
-        request = requests.get(url, timeout= 20)
+        request = requests.get(url, timeout=self.timeout)
         if request.status_code == requests.codes.ok:
             response_str = request.text.encode('utf-8')
         elif request.status_code == 430:
@@ -618,7 +619,7 @@ fao = Repository('http://data.fao.org/sdmx',
 insee = Repository('http://www.bdm.insee.fr/series/sdmx','xml', '2_1','INSEE')
 insee.category_scheme_url = 'http://www.bdm.insee.fr/series/sdmx/categoryscheme'
 
-oecd = Repository('http://stats.oecd.org/sdmx-json','json', '2_1','OECD')
+oecd = Repository('http://stats.oecd.org/sdmx-json','json', '2_1','OECD', timeout=120)
 
 __all__ = ('ecb','ilo','fao','eurostat','insee','Repository')
 
