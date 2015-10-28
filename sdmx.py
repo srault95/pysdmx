@@ -35,7 +35,6 @@ import re
 import zipfile
 from collections import OrderedDict, namedtuple, defaultdict
 import logging
-from pprint import pprint
 import json
 
 
@@ -276,59 +275,68 @@ class Repository(object):
         :param flowRef: Identifier of the dataflow
         :type flowRef: str
         :return: dict"""
-        if self.version == '2_1':
-            url = '/'.join([self.sdmx_url, 'datastructure', self.agencyID, 'DSD_' + flowRef])
-            tree = self.query_rest(url)
-            codelists_path = ".//str:Codelists"
-            codelist_path = ".//str:Codelist"
-            name_path = ".//com:Name"
-            code_path = ".//str:Code"
+        if self.format == 'xml':
+            if self.version == '2_1':
+                url = '/'.join([self.sdmx_url, 'datastructure', self.agencyID, 'DSD_' + flowRef])
+                tree = self.query_rest(url)
+                codelists_path = ".//str:Codelists"
+                codelist_path = ".//str:Codelist"
+                name_path = ".//com:Name"
+                code_path = ".//str:Code"
+                self._codes = {}
+                codelists = tree.xpath(codelists_path,
+                                              namespaces=tree.nsmap)
+                for codelists_ in codelists:
+                    for codelist in codelists_.iterfind(codelist_path,
+                                                        namespaces=tree.nsmap):
+                        name = codelist.xpath(name_path, namespaces=tree.nsmap)
+                        name = name[0]
+                        name = name.text
+                        # a dot "." can't be part of a JSON field name
+                        name = re.sub(r"\.","",name)
+                        code = OrderedDict()
+                        for code_ in codelist.iterfind(code_path,
+                                                       namespaces=tree.nsmap):
+                            code_key = code_.get('id')
+                            code_name = code_.xpath(name_path,
+                                                    namespaces=tree.nsmap)
+                            code_name = code_name[0]
+                            code[code_key] = code_name.text
+                        self._codes[name] = code
+            if self.version == '2_0':
+                codelists_path = ".//message:CodeLists"
+                codelist_path = ".//structure:CodeList"
+                code_path = ".//structure:Code"
+                description_path = ".//structure:Description"
+                url = '/'.join([self.sdmx_url, 'KeyFamily', self.agencyID + '_' + flowRef])
+                tree = self.query_rest(url)
+                self._codes = {}
+                codelists = tree.xpath(codelists_path,
+                                              namespaces=tree.nsmap)
+                for codelists_ in codelists:
+                    for codelist in codelists_.iterfind(codelist_path,
+                                                        namespaces=tree.nsmap):
+                        name = codelist.get('id')
+                        name = name[3:]
+                        # a dot "." can't be part of a JSON field name
+                        name = re.sub(r"\.","",name)
+                        code = {}
+                        for code_ in codelist.iterfind(code_path,
+                                                       namespaces=tree.nsmap):
+                            code_key = code_.get('value')
+                            code_name = code_.xpath(description_path,
+                                                    namespaces=tree.nsmap)
+                            code_name = code_name[0]
+                            code[code_key] = code_name.text
+                        self._codes[name] = code
+        elif self.format == 'json':
+            resource = 'metadata'
+            url = '/'.join([self.sdmx_url, resource, flowRef])
+            message_dict = self.query_rest_json(url)
             self._codes = {}
-            codelists = tree.xpath(codelists_path,
-                                          namespaces=tree.nsmap)
-            for codelists_ in codelists:
-                for codelist in codelists_.iterfind(codelist_path,
-                                                    namespaces=tree.nsmap):
-                    name = codelist.xpath(name_path, namespaces=tree.nsmap)
-                    name = name[0]
-                    name = name.text
-                    # a dot "." can't be part of a JSON field name
-                    name = re.sub(r"\.","",name)
-                    code = OrderedDict()
-                    for code_ in codelist.iterfind(code_path,
-                                                   namespaces=tree.nsmap):
-                        code_key = code_.get('id')
-                        code_name = code_.xpath(name_path,
-                                                namespaces=tree.nsmap)
-                        code_name = code_name[0]
-                        code[code_key] = code_name.text
-                    self._codes[name] = code
-        if self.version == '2_0':
-            codelists_path = ".//message:CodeLists"
-            codelist_path = ".//structure:CodeList"
-            code_path = ".//structure:Code"
-            description_path = ".//structure:Description"
-            url = '/'.join([self.sdmx_url, 'KeyFamily', self.agencyID + '_' + flowRef])
-            tree = self.query_rest(url)
-            self._codes = {}
-            codelists = tree.xpath(codelists_path,
-                                          namespaces=tree.nsmap)
-            for codelists_ in codelists:
-                for codelist in codelists_.iterfind(codelist_path,
-                                                    namespaces=tree.nsmap):
-                    name = codelist.get('id')
-                    name = name[3:]
-                    # a dot "." can't be part of a JSON field name
-                    name = re.sub(r"\.","",name)
-                    code = {}
-                    for code_ in codelist.iterfind(code_path,
-                                                   namespaces=tree.nsmap):
-                        code_key = code_.get('value')
-                        code_name = code_.xpath(description_path,
-                                                namespaces=tree.nsmap)
-                        code_name = code_name[0]
-                        code[code_key] = code_name.text
-                    self._codes[name] = code
+            message_dict['structure']['dimensions']['observation']
+            for code in message_dict['structure']['dimensions']['observation']:
+                self._codes[code['name']] = [(x['id'],x['name']) for x in code['values']]
         return self._codes
 
 
@@ -513,7 +521,6 @@ class Repository(object):
                 raw_dates[code] = [dates[position] for position in series_dates]
                 raw_values[code] = [observations[key][0] for key in list(observations.keys())]
                 raw_attributes[code] = [observations[key][1] for key in list(observations.keys())]
-                print(message_dict['structure']['dimensions']['series'])
                 raw_codes[code] = {}
                 for code_,dim in zip(key.split(':'),message_dict['structure']['dimensions']['series']):
                     raw_codes[code][dim['name']] = dim['values'][int(code_)]['id']
