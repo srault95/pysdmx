@@ -334,7 +334,8 @@ class Repository(object):
             url = '/'.join([self.sdmx_url, resource, flowRef])
             message_dict = self.query_rest_json(url)
             self._codes = {}
-            message_dict['structure']['dimensions']['observation']
+            #message_dict['structure']['dimensions']['observation']
+            self._codes['header'] = message_dict.pop('header', None)
             for code in message_dict['structure']['dimensions']['observation']:
                 self._codes[code['name']] = [(x['id'],x['name']) for x in code['values']]
         return self._codes
