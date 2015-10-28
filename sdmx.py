@@ -105,7 +105,7 @@ class Repository(object):
     :ivar agencyID: An identifier of the statistical provider.
     :type agencyID: str
     """
-    def __init__(self, sdmx_url, format, version, agencyID, timeout=20):
+    def __init__(self, sdmx_url, format, version, agencyID, timeout=20, requests_client=None):
         self.lgr = logging.getLogger('pysdmx')
         self.lgr.setLevel(logging.DEBUG)
         self.fh = logging.FileHandler('pysdmx.log')
@@ -118,6 +118,7 @@ class Repository(object):
         self.format = format
         self.agencyID = agencyID
         self.timeout = timeout
+        self.requests_client = requests_client
         self._dataflows = None
         self.version = version
         if self.format == 'xml':
@@ -137,7 +138,8 @@ class Repository(object):
         """
         # Fetch data from the provider    
         self.lgr.info('Requesting %s', url)
-        request = requests.get(url, timeout=self.timeout)
+        client = self.requests_client or requests
+        request = client.get(url, timeout=self.timeout)
         return json.load(StringIO(request.text), object_pairs_hook=OrderedDict)
     
     def query_rest(self, url):
@@ -149,7 +151,8 @@ class Repository(object):
         """
         # Fetch data from the provider    
         self.lgr.info('Requesting %s', url)
-        request = requests.get(url, timeout=self.timeout)
+        client = self.requests_client or requests
+        request = client.get(url, timeout=self.timeout)
         if request.status_code == requests.codes.ok:
             response_str = request.text.encode('utf-8')
         elif request.status_code == 430:
