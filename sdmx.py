@@ -615,7 +615,7 @@ eurostat_test = Repository('http://localhost:8800/eurostat',
 ecb = Repository('http://sdw-ws.ecb.europa.eu',
                      'xml', '2_0','ECB')
 ecb.dataflow_url = 'http://sdw-ws.ecb.europa.eu/Dataflow'
-ecb2_1 = Repository('https://sdw-wsrest.ecb.europa.eu/service/', 'xml', '2_1', 'ECB')
+ecb2_1 = Repository('https://sdw-wsrest.ecb.europa.eu/service/', 'xml', '2_1', 'ECB', timeout=40)
 ilo = Repository('http://www.ilo.org/ilostat/sdmx/ws/rest/',
                      'xml', '2_1','ILO')
 fao = Repository('http://data.fao.org/sdmx',
