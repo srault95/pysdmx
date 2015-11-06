@@ -25,7 +25,8 @@
     ({'BAL.BS-IBC-NTY.SA.FR.Q': ['-77.8', '-78.2', '-74.5', '-77.9', '-76.4', '-80.1', '-73.6', '-76.0']}, {'BAL.BS-IBC-NTY.SA.FR.Q': ['2009-Q4', '2009-Q3', '2009-Q2', '2009-Q1', '2008-Q4', '2008-Q3', '2008-Q2', '2008-Q1']}, {'BAL.BS-IBC-NTY.SA.FR.Q': defaultdict(<class 'list'>, {})}, {'BAL.BS-IBC-NTY.SA.FR.Q': OrderedDict([('UNIT', 'BAL'), ('INDIC', 'BS-IBC-NTY'), ('S_ADJ', 'SA'), ('GEO', 'FR'), ('FREQ', 'Q')])})
 
 """
-
+import os
+import tempfile
 import requests
 import pandas
 import lxml.etree
@@ -95,7 +96,17 @@ def date_parser(date, frequency):
     if frequency == 'D':
         return datetime.datetime.strptime(date, '%Y-%m-%d')
     
-
+def get_logger(level=logging.INFO):
+    log_filepath = os.path.abspath(os.path.join(tempfile.gettempdir(), 'pysdmx.log'))
+    logger = logging.getLogger('pysdmx')
+    logger.setLevel(level)
+    fh = logging.FileHandler(log_filepath)
+    fh.setLevel(level)
+    frmt = logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    fh.setFormatter(frmt)
+    logger.addHandler(fh)
+    return logger
 
 class Repository(object):
     """Data provider. This is the main class that allows practical access to all the data.
@@ -105,15 +116,11 @@ class Repository(object):
     :ivar agencyID: An identifier of the statistical provider.
     :type agencyID: str
     """
-    def __init__(self, sdmx_url, format, version, agencyID, timeout=20, requests_client=None):
-        self.lgr = logging.getLogger('pysdmx')
-        self.lgr.setLevel(logging.DEBUG)
-        self.fh = logging.FileHandler('pysdmx.log')
-        self.fh.setLevel(logging.DEBUG)
-        self.frmt = logging.Formatter(
-            '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-        self.fh.setFormatter(self.frmt)
-        self.lgr.addHandler(self.fh)
+    def __init__(self, sdmx_url, format, version, agencyID, 
+                 timeout=20, requests_client=None, 
+                 log_level=logging.INFO):
+        
+        self.lgr = get_logger(log_level)
         self.sdmx_url = sdmx_url
         self.format = format
         self.agencyID = agencyID
