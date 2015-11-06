@@ -9,7 +9,7 @@ import os
 long_descr = open('README.md', 'r').read()
 
 setup(name='pysdmx',
-	version='0.1',
+	version='0.1.0',
     description='A python interface to SDMX',
     long_description = long_descr,
     author='Widukind team',
