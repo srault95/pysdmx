@@ -4,7 +4,7 @@
 from setuptools import setup, find_packages
 
 long_descr = ""
-with open('README.md', 'r') as fp:
+with open('README.rst', 'r') as fp:
 	long_descr = fp.read()
 
 setup(
