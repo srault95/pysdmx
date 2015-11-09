@@ -189,49 +189,67 @@ class Repository(object):
             raise ValueError("Error getting client({})".format(request.status_code))
         return lxml.etree.fromstring(response_str)
 
+    def _categories_xml_2_0(self):
+
+        def walk_category(category):
+            category_ = {}
+            name = category.xpath('./structure:Name',namespaces=category.nsmap)
+            category_['name'] = name[0].text
+            flowrefs = category.xpath(
+                './structure:DataflowRef/structure:DataflowID',
+                namespaces=category.nsmap)
+            if flowrefs != []:
+                category_['flowrefs'] = [ flowref.text for flowref in flowrefs ]
+            subcategories = []
+            for subcategory in category.xpath('./structure:Category',
+                                              namespaces=category.nsmap):
+                subcategories.append(walk_category(subcategory))
+            if subcategories != []:
+                category_['subcategories'] = subcategories
+            
+            return category_
+                    
+        tree = self.query_rest(self.category_scheme_url)
+        xml_categories = tree.xpath('.//structure:CategoryScheme',
+                                    namespaces=tree.nsmap)
+        
+        return walk_category(xml_categories[0])                            
+
+    def _categories_xml_2_1(self):
+        
+        def walk_category(category):
+            category_ = {}
+            name = category.xpath("./com:Name[@xml:lang='en']",namespaces=category.nsmap)
+            category_['name'] = name[0].text
+            category_['id'] = category.attrib['id']
+            subcategories = []
+            for subcategory in category.xpath('./str:Category',
+                                              namespaces=category.nsmap):
+                subcategories.append(walk_category(subcategory))
+            if subcategories != []:
+                category_['subcategories'] = subcategories
+                
+            return category_
+
+        tree = self.query_rest(self.sdmx_url + '/categoryscheme')
+        xml_categories = tree.xpath('.//str:CategoryScheme',
+                                    namespaces=tree.nsmap)
+        
+        return walk_category(xml_categories[0])
+
     @property
     def categories(self):
         """Index of available categories
 
         :type: dict"""
-        def walk_category(category):
-            category_ = {}
-            if self.version == '2_0':
-                name = category.xpath('./structure:Name',namespaces=category.nsmap)
-                category_['name'] = name[0].text
-                flowrefs = category.xpath(
-                    './structure:DataflowRef/structure:DataflowID',
-                    namespaces=category.nsmap)
-                if flowrefs != []:
-                    category_['flowrefs'] = [ flowref.text for flowref in flowrefs ]
-                subcategories = []
-                for subcategory in category.xpath('./structure:Category',
-                                                  namespaces=category.nsmap):
-                    subcategories.append(walk_category(subcategory))
-                if subcategories != []:
-                    category_['subcategories'] = subcategories
-            elif self.version == '2_1':
-                name = category.xpath("./com:Name[@xml:lang='en']",namespaces=category.nsmap)
-                category_['name'] = name[0].text
-                category_['id'] = category.attrib['id']
-                subcategories = []
-                for subcategory in category.xpath('./str:Category',
-                                                  namespaces=category.nsmap):
-                    subcategories.append(walk_category(subcategory))
-                if subcategories != []:
-                    category_['subcategories'] = subcategories
-            return category_
+
+        if not self.format == "xml":
+            raise ValueError("categories() function is not available for %s format" % self.format)
 
         if self.version == '2_0':
-            tree = self.query_rest(self.category_scheme_url)
-            xml_categories = tree.xpath('.//structure:CategoryScheme',
-                                        namespaces=tree.nsmap)
+            return self._categories_xml_2_0()
         elif self.version == '2_1':
-            tree = self.query_rest(self.sdmx_url + '/categoryscheme')
-            xml_categories = tree.xpath('.//str:CategoryScheme',
-                                        namespaces=tree.nsmap)
-            
-        return walk_category(xml_categories[0])
+            return self._categories_xml_2_1()
 
     def _dataflows_xml_2_0(self, flowref=None):
 
