@@ -38,6 +38,7 @@ from collections import OrderedDict, namedtuple, defaultdict
 import logging
 import json
 
+logger = logging.getLogger("sdmx")
 
 # Allow easy checking for existing namedtuple classes that can be reused for column metadata  
 tuple_classes = []
@@ -96,18 +97,6 @@ def date_parser(date, frequency):
     if frequency == 'D':
         return datetime.datetime.strptime(date, '%Y-%m-%d')
     
-def get_logger(level=logging.INFO):
-    log_filepath = os.path.abspath(os.path.join(tempfile.gettempdir(), 'pysdmx.log'))
-    logger = logging.getLogger('pysdmx')
-    logger.setLevel(level)
-    fh = logging.FileHandler(log_filepath)
-    fh.setLevel(level)
-    frmt = logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    fh.setFormatter(frmt)
-    logger.addHandler(fh)
-    return logger
-
 class Repository(object):
     """Data provider. This is the main class that allows practical access to all the data.
 
@@ -120,7 +109,6 @@ class Repository(object):
                  timeout=20, requests_client=None, 
                  log_level=logging.INFO):
         
-        self.lgr = get_logger(log_level)
         self.sdmx_url = sdmx_url
         self.format = format
         self.agencyID = agencyID
@@ -152,7 +140,7 @@ class Repository(object):
         :return: A dictionnary of the SDMX message
         """
         # Fetch data from the provider    
-        self.lgr.info('Requesting %s', url)
+        logger.info('Requesting %s', url)
         client = self.requests_client or requests
         request = client.get(url, timeout=self.timeout)
         return json.load(StringIO(request.text), object_pairs_hook=OrderedDict)
@@ -165,7 +153,7 @@ class Repository(object):
         :return: An lxml.etree.ElementTree() of the SDMX message
         """
         # Fetch data from the provider    
-        self.lgr.info('Requesting %s', url)
+        logger.info('Requesting %s', url)
         client = self.requests_client or requests
         request = client.get(url, timeout=self.timeout)
         if request.status_code == requests.codes.ok:
@@ -427,7 +415,7 @@ class Repository(object):
 
         for series in tree.iterfind(".//generic:Series",
                                          namespaces=tree.nsmap):
-            self.lgr.debug('Extracting the series from the SDMX message')
+            logger.debug('Extracting the series from the SDMX message')
             attributes = {}
             values = []
             dimensions = []
@@ -437,13 +425,13 @@ class Repository(object):
                 for key in codes_.iterfind(".//generic:Value",
                                            namespaces=tree.nsmap):
                     codes[key.get('concept')] = key.get('value')
-                self.lgr.debug('Code %s', codes)
+                logger.debug('Code %s', codes)
             for observation in series.iterfind(".//generic:Obs",
                                                namespaces=tree.nsmap):
                 time = observation.xpath(".//generic:Time",
                                                namespaces=tree.nsmap)
                 time = time[0].text
-                self.lgr.debug('Time vector %s', time)
+                logger.debug('Time vector %s', time)
                 dimensions.append(time)
                 # I've commented this out as pandas.to_dates seems to do a better job.
                 # dimension = date_parser(dimensions[0].text, codes['FREQ'])
