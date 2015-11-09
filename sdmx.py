@@ -105,24 +105,20 @@ class Repository(object):
     :ivar agencyID: An identifier of the statistical provider.
     :type agencyID: str
     """
-    def __init__(self, sdmx_url, format, version, agencyID, 
-                 timeout=20, requests_client=None, 
-                 log_level=logging.INFO):
+    def __init__(self, sdmx_url=None, format=None, version=None, agencyID=None, 
+                 timeout=20, requests_client=None):
         
         self.sdmx_url = sdmx_url
         self.format = format
+        self.version = version
+
         self.agencyID = agencyID
         self.timeout = timeout
         self.requests_client = requests_client
         self._dataflows = None
-        self.version = version
-        if self.format == 'xml':
-            self.dataflow_url = '/'.join([self.sdmx_url, 'dataflow', self.agencyID, 'all', 'latest'])
-            self.category_scheme_url = '/'.join([self.sdmx_url, 'CategoryScheme'])
-        if self.format == 'json':
-            #The list of dataflows and categories have yet to be implemented in sdmx-json.
-            self.dataflow_url = None
-            self.category_scheme_url = None
+
+        if not self.sdmx_url:
+            raise ValueError("Require sdmx_url parameter")
 
         if not self.format in ['xml', 'json']:
             raise ValueError("Not implemented SDMX format [%s]" % self.format)
@@ -131,6 +127,19 @@ class Repository(object):
             raise ValueError("Not implemented SDMX ML version [%s]" % self.version)
         elif self.format == "json" and not self.version in ['2_1']:
             raise ValueError("Not implemented SDMX JSON version [%s]" % self.version)
+
+        if self.format == 'xml':
+            if not self.agencyID:
+                raise ValueError("Require agencyID parameter")
+
+            self.dataflow_url = '/'.join([self.sdmx_url, 'dataflow', self.agencyID, 'all', 'latest'])
+            self.category_scheme_url = '/'.join([self.sdmx_url, 'CategoryScheme'])
+
+        elif self.format == 'json':
+            #The list of dataflows and categories have yet to be implemented in sdmx-json.
+            self.dataflow_url = None
+            self.category_scheme_url = None
+
 
     def query_rest_json(self,url):
         """Retrieve SDMX-json messages.
@@ -145,7 +154,7 @@ class Repository(object):
         request = client.get(url, timeout=self.timeout)
         return json.load(StringIO(request.text), object_pairs_hook=OrderedDict)
     
-    def query_rest(self, url):
+    def query_rest_xml(self, url):
         """Retrieve SDMX messages.
 
         :param url: The URL of the message.
@@ -159,6 +168,8 @@ class Repository(object):
         if request.status_code == requests.codes.ok:
             response_str = request.text.encode('utf-8')
         elif request.status_code == 430:
+            #FIXME: where is response ?
+            
             #Sometimes, eurostat creates a zipfile when the query is too large. We have to wait for the file to be generated.
             messages = response.XPath('.//footer:Message/common:Text',
                                       namespaces=response.nsmap)
@@ -209,7 +220,7 @@ class Repository(object):
             
             return category_
                     
-        tree = self.query_rest(self.category_scheme_url)
+        tree = self.query_rest_xml(self.category_scheme_url)
         xml_categories = tree.xpath('.//structure:CategoryScheme',
                                     namespaces=tree.nsmap)
         
@@ -231,7 +242,7 @@ class Repository(object):
                 
             return category_
 
-        tree = self.query_rest(self.sdmx_url + '/categoryscheme')
+        tree = self.query_rest_xml(self.sdmx_url + '/categoryscheme')
         xml_categories = tree.xpath('.//str:CategoryScheme',
                                     namespaces=tree.nsmap)
         
@@ -254,7 +265,7 @@ class Repository(object):
     def _dataflows_xml_2_0(self, flowref=None):
 
         self._dataflows = {}
-        tree = self.query_rest(self.dataflow_url+'/'+str(flowref))
+        tree = self.query_rest_xml(self.dataflow_url+'/'+str(flowref))
         dataflow_path = ".//structure:Dataflow"
         name_path = ".//structure:Name"
         keyid_path = ".//structure:KeyFamilyID"
@@ -277,7 +288,7 @@ class Repository(object):
     def _dataflows_xml_2_1(self, flowref=None):
 
         self._dataflows = {}
-        tree = self.query_rest(self.dataflow_url)
+        tree = self.query_rest_xml(self.dataflow_url)
         dataflow_path = ".//str:Dataflow"
         name_path = ".//com:Name"
 
@@ -320,7 +331,7 @@ class Repository(object):
         code_path = ".//structure:Code"
         description_path = ".//structure:Description"
         url = '/'.join([self.sdmx_url, 'KeyFamily', self.agencyID + '_' + flowRef])
-        tree = self.query_rest(url)
+        tree = self.query_rest_xml(url)
 
         codelists = tree.xpath(codelists_path,
                                       namespaces=tree.nsmap)
@@ -341,11 +352,13 @@ class Repository(object):
                     code[code_key] = code_name.text
                 self._codes[name] = code
 
+        return self._codes
+
     def _codes_xml_2_1(self, flowRef):
 
         self._codes = {}
         url = '/'.join([self.sdmx_url, 'datastructure', self.agencyID, 'DSD_' + flowRef])
-        tree = self.query_rest(url)
+        tree = self.query_rest_xml(url)
         codelists_path = ".//str:Codelists"
         codelist_path = ".//str:Codelist"
         name_path = ".//com:Name"
@@ -372,6 +385,8 @@ class Repository(object):
                     
                 self._codes[name] = code
 
+        return self._codes
+
     def _codes_json_2_1(self, flowRef):
         
         self._codes = {}
@@ -382,6 +397,8 @@ class Repository(object):
         self._codes['header'] = message_dict.pop('header', None)
         for code in message_dict['structure']['dimensions']['observation']:
             self._codes[code['name']] = [(x['id'],x['name']) for x in code['values']]
+            
+        return self._codes
 
     def codes(self, flowRef):
         """Data definitions
@@ -394,19 +411,15 @@ class Repository(object):
         
         if self.format == 'xml':            
             if self.version == '2_1':
-                self._codes_xml_2_1(flowRef)
+                return self._codes_xml_2_1(flowRef)
             elif self.version == '2_0':
-                self._codes_xml_2_0(flowRef)
+                return self._codes_xml_2_0(flowRef)
                 
         elif self.format == 'json':
             
-            if not self.format in ['2_1']:
-                raise ValueError("Not implemented version [%s]" % self.version)
-            
             if self.version == '2_1':
-                self._codes_json_2_1(flowRef)
+                return self._codes_json_2_1(flowRef)
                 
-        return self._codes
 
     def _raw_data_xml_2_0(self, flowRef, key=None, startperiod=None, endperiod=None):
 
@@ -429,7 +442,7 @@ class Repository(object):
         else:
             query = resource + '?dataflow=' + flowRef + key
         url = '/'.join([self.sdmx_url,query])
-        tree = self.query_rest(url)
+        tree = self.query_rest_xml(url)
 
         for series in tree.iterfind(".//generic:Series",
                                          namespaces=tree.nsmap):
@@ -490,7 +503,7 @@ class Repository(object):
         else:
             query = '/'.join([resource, flowRef, key])
         url = '/'.join([self.sdmx_url,query])
-        tree = self.query_rest(url)
+        tree = self.query_rest_xml(url)
         #parser = lxml.etree.XMLParser(ns_clean=True, recover=True, encoding='utf-8') 
         #tree = lxml.etree.fromstring(tree, parser=parser)
         GENERIC = '{'+tree.nsmap['generic']+'}'
