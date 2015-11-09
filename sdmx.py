@@ -1,4 +1,4 @@
-#! /usr/bin/env python3
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
 .. module:: pysdmx
@@ -25,7 +25,8 @@
     ({'BAL.BS-IBC-NTY.SA.FR.Q': ['-77.8', '-78.2', '-74.5', '-77.9', '-76.4', '-80.1', '-73.6', '-76.0']}, {'BAL.BS-IBC-NTY.SA.FR.Q': ['2009-Q4', '2009-Q3', '2009-Q2', '2009-Q1', '2008-Q4', '2008-Q3', '2008-Q2', '2008-Q1']}, {'BAL.BS-IBC-NTY.SA.FR.Q': defaultdict(<class 'list'>, {})}, {'BAL.BS-IBC-NTY.SA.FR.Q': OrderedDict([('UNIT', 'BAL'), ('INDIC', 'BS-IBC-NTY'), ('S_ADJ', 'SA'), ('GEO', 'FR'), ('FREQ', 'Q')])})
 
 """
-
+import os
+import tempfile
 import requests
 import pandas
 import lxml.etree
@@ -37,6 +38,7 @@ from collections import OrderedDict, namedtuple, defaultdict
 import logging
 import json
 
+logger = logging.getLogger("sdmx")
 
 # Allow easy checking for existing namedtuple classes that can be reused for column metadata  
 tuple_classes = []
@@ -95,8 +97,6 @@ def date_parser(date, frequency):
     if frequency == 'D':
         return datetime.datetime.strptime(date, '%Y-%m-%d')
     
-
-
 class Repository(object):
     """Data provider. This is the main class that allows practical access to all the data.
 
@@ -105,29 +105,41 @@ class Repository(object):
     :ivar agencyID: An identifier of the statistical provider.
     :type agencyID: str
     """
-    def __init__(self, sdmx_url, format, version, agencyID, timeout=20, requests_client=None):
-        self.lgr = logging.getLogger('pysdmx')
-        self.lgr.setLevel(logging.DEBUG)
-        self.fh = logging.FileHandler('pysdmx.log')
-        self.fh.setLevel(logging.DEBUG)
-        self.frmt = logging.Formatter(
-            '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-        self.fh.setFormatter(self.frmt)
-        self.lgr.addHandler(self.fh)
+    def __init__(self, sdmx_url=None, format=None, version=None, agencyID=None, 
+                 timeout=20, requests_client=None):
+        
         self.sdmx_url = sdmx_url
         self.format = format
+        self.version = version
+
         self.agencyID = agencyID
         self.timeout = timeout
         self.requests_client = requests_client
         self._dataflows = None
-        self.version = version
+
+        if not self.sdmx_url:
+            raise ValueError("Require sdmx_url parameter")
+
+        if not self.format in ['xml', 'json']:
+            raise ValueError("Not implemented SDMX format [%s]" % self.format)
+
+        if self.format == "xml" and not self.version in ['2_0', '2_1']:
+            raise ValueError("Not implemented SDMX ML version [%s]" % self.version)
+        elif self.format == "json" and not self.version in ['2_1']:
+            raise ValueError("Not implemented SDMX JSON version [%s]" % self.version)
+
         if self.format == 'xml':
+            if not self.agencyID:
+                raise ValueError("Require agencyID parameter")
+
             self.dataflow_url = '/'.join([self.sdmx_url, 'dataflow', self.agencyID, 'all', 'latest'])
             self.category_scheme_url = '/'.join([self.sdmx_url, 'CategoryScheme'])
-        if self.format == 'json':
+
+        elif self.format == 'json':
             #The list of dataflows and categories have yet to be implemented in sdmx-json.
             self.dataflow_url = None
             self.category_scheme_url = None
+
 
     def query_rest_json(self,url):
         """Retrieve SDMX-json messages.
@@ -137,12 +149,12 @@ class Repository(object):
         :return: A dictionnary of the SDMX message
         """
         # Fetch data from the provider    
-        self.lgr.info('Requesting %s', url)
+        logger.info('Requesting %s', url)
         client = self.requests_client or requests
         request = client.get(url, timeout=self.timeout)
         return json.load(StringIO(request.text), object_pairs_hook=OrderedDict)
     
-    def query_rest(self, url):
+    def query_rest_xml(self, url):
         """Retrieve SDMX messages.
 
         :param url: The URL of the message.
@@ -150,12 +162,14 @@ class Repository(object):
         :return: An lxml.etree.ElementTree() of the SDMX message
         """
         # Fetch data from the provider    
-        self.lgr.info('Requesting %s', url)
+        logger.info('Requesting %s', url)
         client = self.requests_client or requests
         request = client.get(url, timeout=self.timeout)
         if request.status_code == requests.codes.ok:
             response_str = request.text.encode('utf-8')
         elif request.status_code == 430:
+            #FIXME: where is response ?
+            
             #Sometimes, eurostat creates a zipfile when the query is too large. We have to wait for the file to be generated.
             messages = response.XPath('.//footer:Message/common:Text',
                                       namespaces=response.nsmap)
@@ -186,90 +200,205 @@ class Repository(object):
             raise ValueError("Error getting client({})".format(request.status_code))
         return lxml.etree.fromstring(response_str)
 
+    def _categories_xml_2_0(self):
+
+        def walk_category(category):
+            category_ = {}
+            name = category.xpath('./structure:Name',namespaces=category.nsmap)
+            category_['name'] = name[0].text
+            flowrefs = category.xpath(
+                './structure:DataflowRef/structure:DataflowID',
+                namespaces=category.nsmap)
+            if flowrefs != []:
+                category_['flowrefs'] = [ flowref.text for flowref in flowrefs ]
+            subcategories = []
+            for subcategory in category.xpath('./structure:Category',
+                                              namespaces=category.nsmap):
+                subcategories.append(walk_category(subcategory))
+            if subcategories != []:
+                category_['subcategories'] = subcategories
+            
+            return category_
+                    
+        tree = self.query_rest_xml(self.category_scheme_url)
+        xml_categories = tree.xpath('.//structure:CategoryScheme',
+                                    namespaces=tree.nsmap)
+        
+        return walk_category(xml_categories[0])                            
+
+    def _categories_xml_2_1(self):
+        
+        def walk_category(category):
+            category_ = {}
+            name = category.xpath("./com:Name[@xml:lang='en']",namespaces=category.nsmap)
+            category_['name'] = name[0].text
+            category_['id'] = category.attrib['id']
+            subcategories = []
+            for subcategory in category.xpath('./str:Category',
+                                              namespaces=category.nsmap):
+                subcategories.append(walk_category(subcategory))
+            if subcategories != []:
+                category_['subcategories'] = subcategories
+                
+            return category_
+
+        tree = self.query_rest_xml(self.sdmx_url + '/categoryscheme')
+        xml_categories = tree.xpath('.//str:CategoryScheme',
+                                    namespaces=tree.nsmap)
+        
+        return walk_category(xml_categories[0])
+
     @property
     def categories(self):
         """Index of available categories
 
         :type: dict"""
-        def walk_category(category):
-            category_ = {}
-            if self.version == '2_0':
-                name = category.xpath('./structure:Name',namespaces=category.nsmap)
-                category_['name'] = name[0].text
-                flowrefs = category.xpath(
-                    './structure:DataflowRef/structure:DataflowID',
-                    namespaces=category.nsmap)
-                if flowrefs != []:
-                    category_['flowrefs'] = [ flowref.text for flowref in flowrefs ]
-                subcategories = []
-                for subcategory in category.xpath('./structure:Category',
-                                                  namespaces=category.nsmap):
-                    subcategories.append(walk_category(subcategory))
-                if subcategories != []:
-                    category_['subcategories'] = subcategories
-            elif self.version == '2_1':
-                name = category.xpath("./com:Name[@xml:lang='en']",namespaces=category.nsmap)
-                category_['name'] = name[0].text
-                category_['id'] = category.attrib['id']
-                subcategories = []
-                for subcategory in category.xpath('./str:Category',
-                                                  namespaces=category.nsmap):
-                    subcategories.append(walk_category(subcategory))
-                if subcategories != []:
-                    category_['subcategories'] = subcategories
-            return category_
+
+        if not self.format == "xml":
+            raise ValueError("categories() function is not available for %s format" % self.format)
 
         if self.version == '2_0':
-            tree = self.query_rest(self.category_scheme_url)
-            xml_categories = tree.xpath('.//structure:CategoryScheme',
-                                        namespaces=tree.nsmap)
+            return self._categories_xml_2_0()
         elif self.version == '2_1':
-            tree = self.query_rest(self.sdmx_url + '/categoryscheme')
-            xml_categories = tree.xpath('.//str:CategoryScheme',
-                                        namespaces=tree.nsmap)
-            
-        return walk_category(xml_categories[0])
+            return self._categories_xml_2_1()
+
+    def _dataflows_xml_2_0(self, flowref=None):
+
+        self._dataflows = {}
+        tree = self.query_rest_xml(self.dataflow_url+'/'+str(flowref))
+        dataflow_path = ".//structure:Dataflow"
+        name_path = ".//structure:Name"
+        keyid_path = ".//structure:KeyFamilyID"
+        for dataflow in tree.iterfind(dataflow_path,
+                                           namespaces=tree.nsmap):
+            for id in dataflow.iterfind(keyid_path,
+                                           namespaces=tree.nsmap):
+                id = id.text
+            agencyID = dataflow.get('agencyID')
+            version = dataflow.get('version')
+            titles = {}
+            for title in dataflow.iterfind(name_path,
+                                           namespaces=tree.nsmap):
+                titles['en'] = title.text
+
+            self._dataflows[id] = (agencyID, version, titles)
+
+        return self._dataflows
+
+    def _dataflows_xml_2_1(self, flowref=None):
+
+        self._dataflows = {}
+        tree = self.query_rest_xml(self.dataflow_url)
+        dataflow_path = ".//str:Dataflow"
+        name_path = ".//com:Name"
+
+        for dataflow in tree.iterfind(dataflow_path,
+                                           namespaces=tree.nsmap):
+            id = dataflow.get('id')
+            agencyID = dataflow.get('agencyID')
+            version = dataflow.get('version')
+            titles = {}
+            for title in dataflow.iterfind(name_path,
+                                           namespaces=tree.nsmap):
+                language = title.values()
+                language = language[0]
+                titles[language] = title.text
+
+            self._dataflows[id] = (agencyID, version, titles)
+
+        return self._dataflows
     
     def dataflows(self, flowref=None):
         """Index of available dataflows
 
         :type: dict"""
+
+        if not self.format == "xml":
+            raise ValueError("dataflows() function is not available for %s format" % self.format)
+
         if self.version == '2_1':
-            tree = self.query_rest(self.dataflow_url)
-            dataflow_path = ".//str:Dataflow"
-            name_path = ".//com:Name"
-            self._dataflows = {}
-            for dataflow in tree.iterfind(dataflow_path,
+            return self._dataflows_xml_2_1(flowref)
+        elif self.version == '2_0':
+            return self._dataflows_xml_2_0(flowref)
+
+
+    def _codes_xml_2_0(self, flowRef):
+
+        self._codes = {}
+
+        codelists_path = ".//message:CodeLists"
+        codelist_path = ".//structure:CodeList"
+        code_path = ".//structure:Code"
+        description_path = ".//structure:Description"
+        url = '/'.join([self.sdmx_url, 'KeyFamily', self.agencyID + '_' + flowRef])
+        tree = self.query_rest_xml(url)
+
+        codelists = tree.xpath(codelists_path,
+                                      namespaces=tree.nsmap)
+        for codelists_ in codelists:
+            for codelist in codelists_.iterfind(codelist_path,
+                                                namespaces=tree.nsmap):
+                name = codelist.get('id')
+                name = name[3:]
+                # a dot "." can't be part of a JSON field name
+                name = re.sub(r"\.","",name)
+                code = {}
+                for code_ in codelist.iterfind(code_path,
                                                namespaces=tree.nsmap):
-                id = dataflow.get('id')
-                agencyID = dataflow.get('agencyID')
-                version = dataflow.get('version')
-                titles = {}
-                for title in dataflow.iterfind(name_path,
+                    code_key = code_.get('value')
+                    code_name = code_.xpath(description_path,
+                                            namespaces=tree.nsmap)
+                    code_name = code_name[0]
+                    code[code_key] = code_name.text
+                self._codes[name] = code
+
+        return self._codes
+
+    def _codes_xml_2_1(self, flowRef):
+
+        self._codes = {}
+        url = '/'.join([self.sdmx_url, 'datastructure', self.agencyID, 'DSD_' + flowRef])
+        tree = self.query_rest_xml(url)
+        codelists_path = ".//str:Codelists"
+        codelist_path = ".//str:Codelist"
+        name_path = ".//com:Name"
+        code_path = ".//str:Code"
+
+        codelists = tree.xpath(codelists_path,
+                                      namespaces=tree.nsmap)
+        for codelists_ in codelists:
+            for codelist in codelists_.iterfind(codelist_path,
+                                                namespaces=tree.nsmap):
+                name = codelist.xpath(name_path, namespaces=tree.nsmap)
+                name = name[0]
+                name = name.text
+                # a dot "." can't be part of a JSON field name
+                name = re.sub(r"\.","",name)
+                code = OrderedDict()
+                for code_ in codelist.iterfind(code_path,
                                                namespaces=tree.nsmap):
-                    language = title.values()
-                    language = language[0]
-                    titles[language] = title.text
-                self._dataflows[id] = (agencyID, version, titles)
-        if self.version == '2_0':
-            tree = self.query_rest(self.dataflow_url+'/'+str(flowref))
-            dataflow_path = ".//structure:Dataflow"
-            name_path = ".//structure:Name"
-            keyid_path = ".//structure:KeyFamilyID"
-            self._dataflows = {}
-            for dataflow in tree.iterfind(dataflow_path,
-                                               namespaces=tree.nsmap):
-                for id in dataflow.iterfind(keyid_path,
-                                               namespaces=tree.nsmap):
-                    id = id.text
-                agencyID = dataflow.get('agencyID')
-                version = dataflow.get('version')
-                titles = {}
-                for title in dataflow.iterfind(name_path,
-                                               namespaces=tree.nsmap):
-                    titles['en'] = title.text
-                self._dataflows[id] = (agencyID, version, titles)
-        return self._dataflows
+                    code_key = code_.get('id')
+                    code_name = code_.xpath(name_path,
+                                            namespaces=tree.nsmap)
+                    code_name = code_name[0]
+                    code[code_key] = code_name.text
+                    
+                self._codes[name] = code
+
+        return self._codes
+
+    def _codes_json_2_1(self, flowRef):
+        
+        self._codes = {}
+        resource = 'metadata'
+        url = '/'.join([self.sdmx_url, resource, flowRef])
+        message_dict = self.query_rest_json(url)
+        #message_dict['structure']['dimensions']['observation']
+        self._codes['header'] = message_dict.pop('header', None)
+        for code in message_dict['structure']['dimensions']['observation']:
+            self._codes[code['name']] = [(x['id'],x['name']) for x in code['values']]
+            
+        return self._codes
 
     def codes(self, flowRef):
         """Data definitions
@@ -279,71 +408,202 @@ class Repository(object):
         :param flowRef: Identifier of the dataflow
         :type flowRef: str
         :return: dict"""
-        if self.format == 'xml':
+        
+        if self.format == 'xml':            
             if self.version == '2_1':
-                url = '/'.join([self.sdmx_url, 'datastructure', self.agencyID, 'DSD_' + flowRef])
-                tree = self.query_rest(url)
-                codelists_path = ".//str:Codelists"
-                codelist_path = ".//str:Codelist"
-                name_path = ".//com:Name"
-                code_path = ".//str:Code"
-                self._codes = {}
-                codelists = tree.xpath(codelists_path,
-                                              namespaces=tree.nsmap)
-                for codelists_ in codelists:
-                    for codelist in codelists_.iterfind(codelist_path,
-                                                        namespaces=tree.nsmap):
-                        name = codelist.xpath(name_path, namespaces=tree.nsmap)
-                        name = name[0]
-                        name = name.text
-                        # a dot "." can't be part of a JSON field name
-                        name = re.sub(r"\.","",name)
-                        code = OrderedDict()
-                        for code_ in codelist.iterfind(code_path,
-                                                       namespaces=tree.nsmap):
-                            code_key = code_.get('id')
-                            code_name = code_.xpath(name_path,
-                                                    namespaces=tree.nsmap)
-                            code_name = code_name[0]
-                            code[code_key] = code_name.text
-                        self._codes[name] = code
-            if self.version == '2_0':
-                codelists_path = ".//message:CodeLists"
-                codelist_path = ".//structure:CodeList"
-                code_path = ".//structure:Code"
-                description_path = ".//structure:Description"
-                url = '/'.join([self.sdmx_url, 'KeyFamily', self.agencyID + '_' + flowRef])
-                tree = self.query_rest(url)
-                self._codes = {}
-                codelists = tree.xpath(codelists_path,
-                                              namespaces=tree.nsmap)
-                for codelists_ in codelists:
-                    for codelist in codelists_.iterfind(codelist_path,
-                                                        namespaces=tree.nsmap):
-                        name = codelist.get('id')
-                        name = name[3:]
-                        # a dot "." can't be part of a JSON field name
-                        name = re.sub(r"\.","",name)
-                        code = {}
-                        for code_ in codelist.iterfind(code_path,
-                                                       namespaces=tree.nsmap):
-                            code_key = code_.get('value')
-                            code_name = code_.xpath(description_path,
-                                                    namespaces=tree.nsmap)
-                            code_name = code_name[0]
-                            code[code_key] = code_name.text
-                        self._codes[name] = code
+                return self._codes_xml_2_1(flowRef)
+            elif self.version == '2_0':
+                return self._codes_xml_2_0(flowRef)
+                
         elif self.format == 'json':
-            resource = 'metadata'
-            url = '/'.join([self.sdmx_url, resource, flowRef])
-            message_dict = self.query_rest_json(url)
-            self._codes = {}
-            #message_dict['structure']['dimensions']['observation']
-            self._codes['header'] = message_dict.pop('header', None)
-            for code in message_dict['structure']['dimensions']['observation']:
-                self._codes[code['name']] = [(x['id'],x['name']) for x in code['values']]
-        return self._codes
+            
+            if self.version == '2_1':
+                return self._codes_json_2_1(flowRef)
+                
 
+    def _raw_data_xml_2_0(self, flowRef, key=None, startperiod=None, endperiod=None):
+
+        series_list = [] 
+        raw_dates = {}
+        raw_values = {}
+        raw_attributes = {}
+        raw_codes = {}
+
+        resource = 'GenericData'
+        key__ = ''
+        for key_, value_ in key.items():
+            key__ += '&' + key_ + '=' + value_
+        key = key__
+
+        if startperiod and endperiod:
+            query = (resource + '?dataflow=' + flowRef + key
+                    + 'startperiod=' + startperiod
+                    + '&endPeriod=' + endperiod)
+        else:
+            query = resource + '?dataflow=' + flowRef + key
+        url = '/'.join([self.sdmx_url,query])
+        tree = self.query_rest_xml(url)
+
+        for series in tree.iterfind(".//generic:Series",
+                                         namespaces=tree.nsmap):
+            logger.debug('Extracting the series from the SDMX message')
+            attributes = {}
+            values = []
+            dimensions = []
+            for codes_ in series.iterfind(".//generic:SeriesKey",
+                                          namespaces=tree.nsmap):
+                codes = OrderedDict()
+                for key in codes_.iterfind(".//generic:Value",
+                                           namespaces=tree.nsmap):
+                    codes[key.get('concept')] = key.get('value')
+                logger.debug('Code %s', codes)
+            for observation in series.iterfind(".//generic:Obs",
+                                               namespaces=tree.nsmap):
+                time = observation.xpath(".//generic:Time",
+                                               namespaces=tree.nsmap)
+                time = time[0].text
+                logger.debug('Time vector %s', time)
+                dimensions.append(time)
+                # I've commented this out as pandas.to_dates seems to do a better job.
+                # dimension = date_parser(dimensions[0].text, codes['FREQ'])
+                obsvalue = observation.xpath(".//generic:ObsValue",
+                                           namespaces=tree.nsmap)
+                value = obsvalue[0].get('value')
+                values.append(value)
+                attributes = {}
+                for attribute in \
+                    observation.iterfind(".//generic:Attributes",
+                                         namespaces=tree.nsmap):
+                    for value_ in \
+                        attribute.xpath(
+                            ".//generic:Value",
+                            namespaces=tree.nsmap):
+                        attributes[value_.get('concept')] = value_.get('value')
+            key = ".".join(codes.values())
+            raw_codes[key] = codes
+            raw_dates[key] = dimensions
+            raw_values[key] = values
+            raw_attributes[key] = attributes
+
+        return (raw_values, raw_dates, raw_attributes, raw_codes)
+
+    def _raw_data_xml_2_1(self, flowRef, key=None, startperiod=None, endperiod=None):
+
+        series_list = [] 
+        raw_dates = {}
+        raw_values = {}
+        raw_attributes = {}
+        raw_codes = {}
+
+        resource = 'data'
+        if startperiod and endperiod:
+            query = '/'.join([resource, flowRef, key
+                    + '?startperiod=' + startperiod
+                    + '&endPeriod=' + endperiod])
+        else:
+            query = '/'.join([resource, flowRef, key])
+        url = '/'.join([self.sdmx_url,query])
+        tree = self.query_rest_xml(url)
+        #parser = lxml.etree.XMLParser(ns_clean=True, recover=True, encoding='utf-8') 
+        #tree = lxml.etree.fromstring(tree, parser=parser)
+        GENERIC = '{'+tree.nsmap['generic']+'}'
+        
+        for series in tree.iterfind(".//generic:Series",
+                                    namespaces=tree.nsmap):
+            attributes = {}
+            values = []
+            dimensions = []
+            a_keys = set()
+            obs_nbr = 0
+            
+            for elem in series.iterchildren():
+                a = {}
+                if elem.tag == GENERIC + 'SeriesKey':
+                    codes = OrderedDict()
+                    for value in elem.iter(GENERIC + "Value"):
+                        codes[value.get('id')] = value.get('value')
+                elif elem.tag == GENERIC + 'Obs':
+                    a = {}
+                    for elem1 in elem.iterchildren():
+
+                        if elem1.tag == GENERIC + 'ObsDimension':
+                            dimensions.append(elem1.get('value'))
+                        elif elem1.tag == GENERIC + 'ObsValue':
+                            value = elem1.get('value')
+                            values.append(value)
+                        elif elem1.tag == GENERIC + 'Attributes':
+                            for elem2 in elem1.iterchildren():
+                                key = elem2.get('id') 
+                                a[key] = elem2.get('value')
+                                a_keys.add(key)
+                    if len(a):
+                        attributes[obs_nbr] = a
+                    obs_nbr += 1
+            key = ".".join(codes.values())
+            raw_codes[key] = codes
+            raw_dates[key] = dimensions
+            raw_values[key] = values
+            a = defaultdict(list)
+            for k in a_keys:
+                a[k] = [None for v in values]
+            for i in attributes:
+                for k in attributes[i]:
+                    a[k][i] = attributes[i][k]
+            raw_attributes[key] = a 
+
+        return (raw_values, raw_dates, raw_attributes, raw_codes)
+
+    def _raw_data_json_2_1(self, flowRef, key=None, startperiod=None, endperiod=None):
+
+        series_list = []
+        code_lists = []         
+        raw_dates = {}
+        raw_values = {}
+        raw_attributes = {}
+        raw_codes = {}
+
+        if key is None:
+            key = 'all'
+        resource = 'data'
+        if startperiod and endperiod:
+            query = '/'.join([resource, flowRef, key
+                    + 'all?startperiod=' + startperiod
+                    + '&endPeriod=' + endperiod
+                    + '&dimensionAtObservation=TIME'])
+        else:
+            query = '/'.join([resource, flowRef, key,'all'])
+        url = '/'.join([self.sdmx_url,query])
+        message_dict = self.query_rest_json(url)
+        
+        dates = message_dict['structure']['dimensions']['observation'][0]
+        dates = [node['name'] for node in dates['values']]
+        series = message_dict['dataSets'][0]['series']
+        dimensions = message_dict['structure']['dimensions']
+        
+        for dimension in dimensions['series']:
+            dimension['keyPosition']
+            dimension['id']
+            dimension['name']
+            dimension['values']
+
+        for key in series:
+            dims = key.split(':')
+            code = ''
+            for dimension, position in zip(dimensions['series'],dims):
+                code = code + '.' + dimension['values'][int(position)]['id']
+            code_lists.append((key, code))
+
+        for key,code in code_lists:
+            observations = message_dict['dataSets'][0]['series'][key]['observations']
+            series_dates = [int(point) for point in list(observations.keys())]
+            raw_dates[code] = [dates[position] for position in series_dates]
+            raw_values[code] = [observations[key][0] for key in list(observations.keys())]
+            raw_attributes[code] = [observations[key][1] for key in list(observations.keys())]
+            raw_codes[code] = {}
+            for code_,dim in zip(key.split(':'),message_dict['structure']['dimensions']['series']):
+                raw_codes[code][dim['name']] = dim['values'][int(code_)]['id']
+
+        return (raw_values, raw_dates, raw_attributes, raw_codes)
 
     def raw_data(self, flowRef, key=None, startperiod=None, endperiod=None):
         """Get data
@@ -359,177 +619,25 @@ class Repository(object):
         :param d: a dict of global metadata.    
 
         :return: tuple of the form (l, d) or (df, d) depending on the value of 'concat'.
-
-
         """
        
-        series_list = [] 
-        
         if self.format == "xml":
             if self.version == '2_1':
-                resource = 'data'
-                if startperiod and endperiod:
-                    query = '/'.join([resource, flowRef, key
-                            + '?startperiod=' + startperiod
-                            + '&endPeriod=' + endperiod])
-                else:
-                    query = '/'.join([resource, flowRef, key])
-                url = '/'.join([self.sdmx_url,query])
-                tree = self.query_rest(url)
-                #parser = lxml.etree.XMLParser(ns_clean=True, recover=True, encoding='utf-8') 
-                #tree = lxml.etree.fromstring(tree, parser=parser)
-                GENERIC = '{'+tree.nsmap['generic']+'}'
+                return self._raw_data_xml_2_1(flowRef, key=key, 
+                                              startperiod=startperiod, 
+                                              endperiod=endperiod)
                 
-                raw_codes = {}
-                raw_dates = {}
-                raw_values = {}
-                raw_attributes = {}
-                for series in tree.iterfind(".//generic:Series",
-                                            namespaces=tree.nsmap):
-                    attributes = {}
-                    values = []
-                    dimensions = []
-                    a_keys = set()
-                    obs_nbr = 0
-                    
-                    for elem in series.iterchildren():
-                        a = {}
-                        if elem.tag == GENERIC + 'SeriesKey':
-                            codes = OrderedDict()
-                            for value in elem.iter(GENERIC + "Value"):
-                                codes[value.get('id')] = value.get('value')
-                        elif elem.tag == GENERIC + 'Obs':
-                            a = {}
-                            for elem1 in elem.iterchildren():
-
-                                if elem1.tag == GENERIC + 'ObsDimension':
-                                    dimensions.append(elem1.get('value'))
-                                elif elem1.tag == GENERIC + 'ObsValue':
-                                    value = elem1.get('value')
-                                    values.append(value)
-                                elif elem1.tag == GENERIC + 'Attributes':
-                                    for elem2 in elem1.iterchildren():
-                                        key = elem2.get('id') 
-                                        a[key] = elem2.get('value')
-                                        a_keys.add(key)
-                            if len(a):
-                                attributes[obs_nbr] = a
-                            obs_nbr += 1
-                    key = ".".join(codes.values())
-                    raw_codes[key] = codes
-                    raw_dates[key] = dimensions
-                    raw_values[key] = values
-                    a = defaultdict(list)
-                    for k in a_keys:
-                        a[k] = [None for v in values]
-                    for i in attributes:
-                        for k in attributes[i]:
-                            a[k][i] = attributes[i][k]
-                    raw_attributes[key] = a 
             elif self.version == '2_0':
-                resource = 'GenericData'
-                key__ = ''
-                for key_, value_ in key.items():
-                    key__ += '&' + key_ + '=' + value_
-                key = key__
-
-                if startperiod and endperiod:
-                    query = (resource + '?dataflow=' + flowRef + key
-                            + 'startperiod=' + startperiod
-                            + '&endPeriod=' + endperiod)
-                else:
-                    query = resource + '?dataflow=' + flowRef + key
-                url = '/'.join([self.sdmx_url,query])
-                tree = self.query_rest(url)
-
-                raw_codes = {}
-                raw_dates = {}
-                raw_values = {}
-                raw_attributes = {}
-                for series in tree.iterfind(".//generic:Series",
-                                                 namespaces=tree.nsmap):
-                    self.lgr.debug('Extracting the series from the SDMX message')
-                    attributes = {}
-                    values = []
-                    dimensions = []
-                    for codes_ in series.iterfind(".//generic:SeriesKey",
-                                                  namespaces=tree.nsmap):
-                        codes = OrderedDict()
-                        for key in codes_.iterfind(".//generic:Value",
-                                                   namespaces=tree.nsmap):
-                            codes[key.get('concept')] = key.get('value')
-                        self.lgr.debug('Code %s', codes)
-                    for observation in series.iterfind(".//generic:Obs",
-                                                       namespaces=tree.nsmap):
-                        time = observation.xpath(".//generic:Time",
-                                                       namespaces=tree.nsmap)
-                        time = time[0].text
-                        self.lgr.debug('Time vector %s', time)
-                        dimensions.append(time)
-                        # I've commented this out as pandas.to_dates seems to do a better job.
-                        # dimension = date_parser(dimensions[0].text, codes['FREQ'])
-                        obsvalue = observation.xpath(".//generic:ObsValue",
-                                                   namespaces=tree.nsmap)
-                        value = obsvalue[0].get('value')
-                        values.append(value)
-                        attributes = {}
-                        for attribute in \
-                            observation.iterfind(".//generic:Attributes",
-                                                 namespaces=tree.nsmap):
-                            for value_ in \
-                                attribute.xpath(
-                                    ".//generic:Value",
-                                    namespaces=tree.nsmap):
-                                attributes[value_.get('concept')] = value_.get('value')
-                    key = ".".join(codes.values())
-                    raw_codes[key] = codes
-                    raw_dates[key] = dimensions
-                    raw_values[key] = values
-                    raw_attributes[key] = attributes
-            else: raise ValueError("SDMX version must be either '2_0' or '2_1'. %s given." % self.version)
+                return self._raw_data_xml_2_0(flowRef, key=key, 
+                                              startperiod=startperiod, 
+                                              endperiod=endperiod)
+                
         elif self.format == "json":
-            if key is None:
-                key = 'all'
-            resource = 'data'
-            if startperiod and endperiod:
-                query = '/'.join([resource, flowRef, key
-                        + 'all?startperiod=' + startperiod
-                        + '&endPeriod=' + endperiod
-                        + '&dimensionAtObservation=TIME'])
-            else:
-                query = '/'.join([resource, flowRef, key,'all'])
-            url = '/'.join([self.sdmx_url,query])
-            message_dict = self.query_rest_json(url)
-            dates = message_dict['structure']['dimensions']['observation'][0]
-            dates = [node['name'] for node in dates['values']]
-            series = message_dict['dataSets'][0]['series']
-            dimensions = message_dict['structure']['dimensions']
-            for dimension in dimensions['series']:
-                dimension['keyPosition']
-                dimension['id']
-                dimension['name']
-                dimension['values']
-            code_lists = []
-            for key in series:
-                dims = key.split(':')
-                code = ''
-                for dimension, position in zip(dimensions['series'],dims):
-                    code = code + '.' + dimension['values'][int(position)]['id']
-                code_lists.append((key, code))
-            raw_dates = {}
-            raw_values = {}
-            raw_attributes = {}
-            raw_codes = {}
-            for key,code in code_lists:
-                observations = message_dict['dataSets'][0]['series'][key]['observations']
-                series_dates = [int(point) for point in list(observations.keys())]
-                raw_dates[code] = [dates[position] for position in series_dates]
-                raw_values[code] = [observations[key][0] for key in list(observations.keys())]
-                raw_attributes[code] = [observations[key][1] for key in list(observations.keys())]
-                raw_codes[code] = {}
-                for code_,dim in zip(key.split(':'),message_dict['structure']['dimensions']['series']):
-                    raw_codes[code][dim['name']] = dim['values'][int(code_)]['id']
-        return (raw_values, raw_dates, raw_attributes, raw_codes)
+            if self.version == '2_1':
+                return self._raw_data_json_2_1(flowRef, key=key, 
+                                              startperiod=startperiod, 
+                                              endperiod=endperiod)
+            
 
     def data(self, flowRef, key, startperiod=None, endperiod=None, 
         concat = False):
