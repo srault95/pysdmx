@@ -29,7 +29,7 @@ pysdmx provides a bookmark for the SDMX endpoint provided by Eurostat. You can e
    :alt: Travis Build Status
    
 .. |Build Doc| image:: https://readthedocs.org/projects/widukind/badge/?version=latest
-   :target: http://pysdmx.readthedocs.org/en/latest/?badge=latest
+   :target: http://widukind-pysdmx.readthedocs.org/en/latest/?badge=latest
    :alt: Documentation Status   
    
 .. |Coveralls| image:: https://coveralls.io/repos/Widukind/pysdmx/badge.svg?branch=master&service=github
