@@ -14,10 +14,11 @@ setup(
     long_description = long_descr,
     author='Widukind team',
     author_email='dev@michaelmalter.fr',
+    license = 'GPLv3',
     py_modules=['sdmx'],
 	provides = ['sdmx'],
     url = 'https://github.com/widukind/pysdmx',
-    requires=[
+    install_requires=[
         'pandas',
         'lxml',
         'requests'
@@ -37,7 +38,6 @@ setup(
         'License :: OSI Approved',
         'Operating System :: OS Independent',
         'Programming Language :: Python',
-        'Programming Language :: Python :: 2.7',
         'Programming Language :: Python :: 3',
         'Programming Language :: Python :: 3.2',
 		'Programming Language :: Python :: 3.3',
