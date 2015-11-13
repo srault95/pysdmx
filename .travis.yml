@@ -20,7 +20,7 @@ before_install:
 before_script:
   - sleep 15
   - env
-  - docker run --rm widukind/pysdmx freeze
+  - docker run --rm widukind/pysdmx pip freeze
 
 script:
   - docker run --rm -v $PWD/coverage:/code/coverage widukind/pysdmx nosetests --with-coverage -s -v sdmx_tests
