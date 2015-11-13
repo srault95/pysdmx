@@ -330,6 +330,8 @@ class Repository(object):
         codelist_path = ".//structure:CodeList"
         code_path = ".//structure:Code"
         description_path = ".//structure:Description"
+        dimension_path = ".//structure:Dimension"
+
         url = '/'.join([self.sdmx_url, 'KeyFamily', self.agencyID + '_' + flowRef])
         tree = self.query_rest_xml(url)
 
@@ -352,7 +354,15 @@ class Repository(object):
                     code[code_key] = code_name.text
                 self._codes[name] = code
 
-        return self._codes
+        dimension_list = tree.xpath(dimension_path,
+                                   namespaces=tree.nsmap)
+        self.dimensions = {}
+        for dimension in dimension_list:
+            name = dimension.get('conceptRef')
+            values = dimension.get('codelist')
+            self.dimensions[name] = self._codes[values[3:]]
+
+        return self.dimensions
 
     def _codes_xml_2_1(self, flowRef):
 
@@ -721,9 +731,9 @@ eurostat.category_scheme_url = 'http://sdw-ws.ecb.europa.eu/Dataflow'
 eurostat_test = Repository('http://localhost:8800/eurostat',
                      'xml', '2_1','ESTAT')
 ecb = Repository('http://sdw-ws.ecb.europa.eu',
-                     'xml', '2_0','ECB')
+                     'xml', '2_0','ECB', timeout=190)
 ecb.dataflow_url = 'http://sdw-ws.ecb.europa.eu/Dataflow'
-ecb2_1 = Repository('https://sdw-wsrest.ecb.europa.eu/service/', 'xml', '2_1', 'ECB', timeout=40)
+ecb2_1 = Repository('https://sdw-wsrest.ecb.europa.eu/service/', 'xml', '2_1', 'ECB', timeout=190)
 ilo = Repository('http://www.ilo.org/ilostat/sdmx/ws/rest/',
                      'xml', '2_1','ILO')
 fao = Repository('http://data.fao.org/sdmx',
