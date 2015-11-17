@@ -262,6 +262,23 @@ class Repository(object):
         elif self.version == '2_1':
             return self._categories_xml_2_1()
 
+    @property
+    def categorisation(self):
+        """Links categories and dataflows"""
+
+        categories = defaultdict(list)
+        tree = self.query_rest_xml(self.sdmx_url + '/categorisation')
+        categorisations = tree.xpath('.//str:Categorisation',namespaces=tree.nsmap)
+        for categorisation in categorisations:
+            source = categorisation.xpath('str:Source',namespaces=tree.nsmap)
+            ref = source[0].xpath('Ref',namespaces=tree.nsmap)
+            source_id = ref[0].attrib['id']
+            target = categorisation.xpath('str:Target',namespaces=tree.nsmap)
+            ref = target[0].xpath('Ref',namespaces=tree.nsmap)
+            target_id = ref[0].attrib['id']
+            categories[target_id].append(source_id)
+        return(categories)
+
     def _dataflows_xml_2_0(self, flowref=None):
 
         self._dataflows = {}
