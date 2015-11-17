@@ -9,7 +9,7 @@ with open('README.rst', 'r') as fp:
 
 setup(
 	name='pysdmx',
-	version='0.1.0',
+	version='0.2.0',
     description='A python interface to SDMX',
     long_description = long_descr,
     author='Widukind team',
