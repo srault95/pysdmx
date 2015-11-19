@@ -474,7 +474,7 @@ class Repository(object):
         for series in tree.iterfind(".//generic:Series",
                                          namespaces=tree.nsmap):
             logger.debug('Extracting the series from the SDMX message')
-            attributes = {}
+            attributes = []
             values = []
             dimensions = []
             for codes_ in series.iterfind(".//generic:SeriesKey",
@@ -497,7 +497,7 @@ class Repository(object):
                                            namespaces=tree.nsmap)
                 value = obsvalue[0].get('value')
                 values.append(value)
-                attributes = {}
+                _attributes = {}
                 for attribute in \
                     observation.iterfind(".//generic:Attributes",
                                          namespaces=tree.nsmap):
@@ -505,7 +505,8 @@ class Repository(object):
                         attribute.xpath(
                             ".//generic:Value",
                             namespaces=tree.nsmap):
-                        attributes[value_.get('concept')] = value_.get('value')
+                        _attributes[value_.get('concept')] = value_.get('value')
+                attributes.append(_attributes)
             key = ".".join(codes.values())
             raw_codes[key] = codes
             raw_dates[key] = dimensions
