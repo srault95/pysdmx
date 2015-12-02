@@ -11,6 +11,9 @@ from sdmx_tests.resources import xml_2_0
 from sdmx_tests.resources import xml_2_1
 from sdmx import Repository
 
+#TODELETE
+import requests
+
 RESOURCES = os.path.abspath(os.path.dirname(resources.__file__))
 RESOURCES_JSON_2_1 = os.path.abspath(os.path.dirname(json_2_1.__file__))
 RESOURCES_XML_2_0 = os.path.abspath(os.path.dirname(xml_2_0.__file__))
@@ -124,9 +127,90 @@ class SDMX_XML_2_1_TestCase(unittest.TestCase):
     def test_dataflows(self):
         pass
 
-    @unittest.skipIf(True, "TODO")
+    #@unittest.skipIf(True, "TODO")
+    @httpretty.activate
     def test_codes(self):
-        pass
+        #https://raw.githubusercontent.com/sdmx-twg/sdmx-ml-v2_1/master/samples/common/common.xml
+        codes_fp = os.path.abspath(os.path.join(RESOURCES_XML_2_1, 
+                                                   "common.xml"))
+
+        body = None
+        with open(codes_fp) as fp:
+            body = fp.read()
+
+        httpretty.register_uri(httpretty.GET, 
+                               "http://ec.europa.eu/eurostat/SDMX/diss-web/rest/datastructure/ESTAT/DSD_nama_gdp_c",
+                               body=body,
+                               status=200,
+                               content_type="application/xml"
+                               )
+
+        sdmx_client = Repository(sdmx_url='http://ec.europa.eu/eurostat/SDMX/diss-web/rest', 
+                                 format="xml", 
+                                 version="2_1",
+                                 agencyID='ESTAT',
+                                 namespace_style='long'
+                                )
+
+        model = {'Code list for Decimals (DECIMALS)': {'0': 'Zero',
+                                       '1': 'One',
+                                       '2': 'Two',
+                                       '3': 'Three',
+                                       '4': 'Four',
+                                       '5': 'Five',
+                                       '6': 'Six',
+                                       '7': 'Seven',
+                                       '8': 'Eight',
+                                       '9': 'Nine'},
+                 'Code list for Frequency (FREQ)': {'A': 'Annual',
+                                                    'B': 'Daily - business week',
+                                                    'D': 'Daily',
+                                                    'M': 'Monthly',
+                                                    'N': 'Minutely',
+                                                    'Q': 'Quarterly',
+                                                    'S': 'Half Yearly, semester',
+                                                    'W': 'Weekly'},
+                 'Observation status': {'A': 'Normal',
+                                        'B': 'Break',
+                                        'E': 'Estimated value',
+                                        'F': 'Forecast value',
+                                        'I': 'Imputed value (CCSA definition)',
+                                        'M': 'Missing value',
+                                        'P': 'Provisional value',
+                                        'S': 'Strike'},
+                 'code list for Confidentiality Status (CONF_STATUS)': {'C': 'Confidential '
+                                                                             'statistical '
+                                                                             'information',
+                                                                        'D': 'Secondary '
+                                                                             'confidentiality '
+                                                                             'set by the '
+                                                                             'sender, not '
+                                                                             'for\t'
+                                                                             'publication',
+                                                                        'F': 'Free',
+                                                                        'N': 'Not for '
+                                                                             'publication, '
+                                                                             'restricted '
+                                                                             'for internal '
+                                                                             'use only',
+                                                                        'S': 'Secondary '
+                                                                             'confidentiality '
+                                                                             'set and '
+                                                                             'managed by '
+                                                                             'the receiver, '
+                                                                             'not for '
+                                                                             'publication'},
+                 'code list for the Unit Multiplier (UNIT_MULT)': {'0': 'Units',
+                                                                   '1': 'Tens',
+                                                                   '2': 'Hundreds',
+                                                                   '3': 'Thousands',
+                                                                   '4': 'Tens of thousands',
+                                                                   '6': 'Millions',
+                                                                   '9': 'Billions',
+                                                                   '12': 'Trillions',
+                                                                   '15': 'Quadrillions'}}
+        result = sdmx_client.codes("DSD_nama_gdp_c")
+        self.assertEqual(result,model)
 
     @unittest.skipIf(True, "TODO")
     def test_raw_data(self):
@@ -251,4 +335,3 @@ class SDMX_JSON_2_1_TestCase(unittest.TestCase):
     @unittest.skipIf(True, "TODO")
     def test_categories(self):
         pass
-

@@ -106,7 +106,7 @@ class Repository(object):
     :type agencyID: str
     """
     def __init__(self, sdmx_url=None, format=None, version=None, agencyID=None, 
-                 timeout=20, requests_client=None):
+                 timeout=20, requests_client=None, namespace_style='small'):
         
         self.sdmx_url = sdmx_url
         self.format = format
@@ -115,6 +115,16 @@ class Repository(object):
         self.agencyID = agencyID
         self.timeout = timeout
         self.requests_client = requests_client
+        self.namespace_style=namespace_style
+        if namespace_style == 'small':
+            # TODO: use these everywhere
+            self.structure = 'str'
+            self.message = 'mes'
+            self.common = 'com'
+        elif namespace_style == 'long':
+            self.structure = 'structure'
+            self.message = 'message'
+            self.common = 'common'
         self._dataflows = None
 
         if not self.sdmx_url:
@@ -168,8 +178,6 @@ class Repository(object):
         if request.status_code == requests.codes.ok:
             response_str = request.text.encode('utf-8')
         elif request.status_code == 430:
-            #FIXME: where is response ?
-            
             #Sometimes, eurostat creates a zipfile when the query is too large. We have to wait for the file to be generated.
             messages = response.XPath('.//footer:Message/common:Text',
                                       namespaces=response.nsmap)
@@ -349,7 +357,7 @@ class Repository(object):
         description_path = ".//structure:Description"
         dimension_path = ".//structure:Dimension"
 
-        url = '/'.join([self.sdmx_url, 'KeyFamily', self.agencyID + '_' + flowRef])
+        url = '/'.join([self.sdmx_url, 'KeyFamily', flowRef])
         tree = self.query_rest_xml(url)
 
         codelists = tree.xpath(codelists_path,
@@ -384,13 +392,14 @@ class Repository(object):
     def _codes_xml_2_1(self, flowRef):
 
         self._codes = {}
-        url = '/'.join([self.sdmx_url, 'datastructure', self.agencyID, 'DSD_' + flowRef])
+        url = '/'.join([self.sdmx_url, 'datastructure', self.agencyID, flowRef])
         tree = self.query_rest_xml(url)
-        codelists_path = ".//str:Codelists"
-        codelist_path = ".//str:Codelist"
-        name_path = ".//com:Name"
-        code_path = ".//str:Code"
+        codelists_path = ".//"+self.structure+":Codelists"
+        codelist_path = ".//"+self.structure+":Codelist"
+        name_path = ".//"+self.common+":Name"
+        code_path = ".//"+self.structure+":Code"
 
+        print(tree.nsmap)
         codelists = tree.xpath(codelists_path,
                                       namespaces=tree.nsmap)
         for codelists_ in codelists:
