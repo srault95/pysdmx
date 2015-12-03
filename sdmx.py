@@ -142,7 +142,7 @@ class Repository(object):
             if not self.agencyID:
                 raise ValueError("Require agencyID parameter")
 
-            self.dataflow_url = '/'.join([self.sdmx_url, 'dataflow', self.agencyID, 'all', 'latest'])
+            self.dataflow_url = '/'.join([self.sdmx_url, 'dataflow', self.agencyID])
             self.category_scheme_url = '/'.join([self.sdmx_url, 'CategoryScheme'])
 
         elif self.format == 'json':
@@ -313,7 +313,7 @@ class Repository(object):
     def _dataflows_xml_2_1(self, flowref=None):
 
         self._dataflows = {}
-        tree = self.query_rest_xml(self.dataflow_url)
+        tree = self.query_rest_xml('/'.join([self.dataflow_url, flowref]))
         dataflow_path = ".//str:Dataflow"
         name_path = ".//com:Name"
 

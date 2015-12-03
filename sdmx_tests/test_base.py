@@ -3,7 +3,7 @@
 import os
 import unittest
 import httpretty
-from pprint import pprint
+import pprint
 
 from sdmx_tests import resources
 from sdmx_tests.resources import json_2_1
@@ -123,11 +123,38 @@ class SDMX_XML_2_1_TestCase(unittest.TestCase):
     def test_categories(self):
         pass
 
-    @unittest.skipIf(True, "TODO")
+    @httpretty.activate
     def test_dataflows(self):
-        pass
+        dataflows_fp = os.path.abspath(os.path.join(RESOURCES_XML_2_1, 
+                                                    "nama_gdp_c.xml"))
 
-    #@unittest.skipIf(True, "TODO")
+        body = None
+        with open(dataflows_fp) as fp:
+            body = fp.read()
+
+        httpretty.register_uri(httpretty.GET, 
+                               "http://ec.europa.eu/eurostat/SDMX/diss-web/rest/dataflow/ESTAT/nama_gdp_c",
+                               body=body,
+                               status=200,
+                               content_type="application/xml"
+                               )
+
+        sdmx_client = Repository(sdmx_url='http://ec.europa.eu/eurostat/SDMX/diss-web/rest', 
+                                 format="xml", 
+                                 version="2_1",
+                                 agencyID='ESTAT',
+                                 namespace_style='short'
+                                )
+
+        result = sdmx_client.dataflows("nama_gdp_c")
+        model = {'nama_gdp_c':
+                 ('ESTAT', '1.0',
+                  {'en': 'GDP and main components - Current prices',
+                   'fr': 'PIB et principales composantes - Prix courants',
+                   'de': 'BIP und Hauptkomponenten - Jeweilige Preise'})}
+
+        self.assertEqual(result,model)
+
     @httpretty.activate
     def test_codes(self):
         #https://raw.githubusercontent.com/sdmx-twg/sdmx-ml-v2_1/master/samples/common/common.xml
@@ -214,6 +241,8 @@ class SDMX_XML_2_1_TestCase(unittest.TestCase):
 
     @unittest.skipIf(True, "TODO")
     def test_raw_data(self):
+        #data_fp = os.path.abspath(os.path.join(RESOURCES_XML_2_1, 
+                                                   #"ecb_exr_ng_flat.xml"))
         pass
 
 class SDMX_JSON_2_1_TestCase(unittest.TestCase):
