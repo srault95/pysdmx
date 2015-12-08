@@ -119,9 +119,51 @@ class SDMX_XML_2_1_TestCase(unittest.TestCase):
     @see: https://github.com/sdmx-twg/sdmx-ml-v2_1
     """
 
-    @unittest.skipIf(True, "TODO")
     def test_categories(self):
-        pass
+        #https://sdw-wsrest.ecb.europa.eu/service/categoryscheme
+        codes_fp = os.path.abspath(os.path.join(RESOURCES_XML_2_1, 
+                                                   "categoryscheme.xml"))
+
+        body = None
+        with open(codes_fp) as fp:
+            body = fp.read()
+
+        httpretty.register_uri(httpretty.GET, 
+                               "https://sdw-wsrest.ecb.europa.eu/service/categoryscheme",
+                               body=body,
+                               status=200,
+                               content_type="application/xml"
+                               )
+
+        sdmx_client = Repository(sdmx_url='https://sdw-wsrest.ecb.europa.eu/service', 
+                                 format="xml", 
+                                 version="2_1",
+                                 agencyID='ECB',
+                                 namespace_style='short'
+                                )
+
+
+        model = {'id': 'MOBILE_NAVI',
+                 'name': 'Economic concepts',
+                 'subcategories': [{'id': '01', 'name': 'Monetary operations'},
+                                   {'id': '02',
+                                    'name': 'Prices, output, demand and labour market'},
+                                   {'id': '03', 'name': 'Monetary and financial statistics'},
+                                   {'id': '04', 'name': 'Euro area accounts'},
+                                   {'id': '05', 'name': 'Government finance'},
+                                   {'id': '06',
+                                    'name': 'External transactions and positions'},
+                                   {'id': '07', 'name': 'Exchange rates'},
+                                   {'id': '08',
+                                    'name': 'Payments and securities trading, clearing, '
+                                            'settlement'},
+                                   {'id': '09', 'name': 'Banknotes and Coins'},
+                                   {'id': '10',
+                                    'name': 'Indicators of Financial Integration'},
+                                   {'id': '11',
+                                    'name': 'Real Time Database (research database)'}]}
+        result = sdmx_client.categories
+        self.assertEqual(result,model)
 
     @httpretty.activate
     def test_dataflows(self):
