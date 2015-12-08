@@ -281,11 +281,70 @@ class SDMX_XML_2_1_TestCase(unittest.TestCase):
         result = sdmx_client.codes("DSD_nama_gdp_c")
         self.assertEqual(result,model)
 
-    @unittest.skipIf(True, "TODO")
+    @httpretty.activate
     def test_raw_data(self):
-        #data_fp = os.path.abspath(os.path.join(RESOURCES_XML_2_1, 
-                                                   #"ecb_exr_ng_flat.xml"))
-        pass
+        #https://raw.githubusercontent.com/sdmx-twg/sdmx-ml-v2_1/master/samples/exr/ecb_exr_ng/generic/ecb_exr_ng_ts.xml
+        data_fp = os.path.abspath(os.path.join(RESOURCES_XML_2_1, 
+                                                   "ecb_exr_ng_ts.xml"))
+
+        body = None
+        with open(data_fp) as fp:
+            body = fp.read()
+
+        httpretty.register_uri(httpretty.GET, 
+                               "https://sdw-wsrest.ecb.europa.eu/service/data/exr/....",
+                               body=body,
+                               status=200,
+                               content_type="application/xml"
+                               )
+
+        sdmx_client = Repository(sdmx_url="https://sdw-wsrest.ecb.europa.eu/service", 
+                                 format="xml", 
+                                 version="2_1",
+                                 agencyID='ECB',
+                                 namespace_style='short'
+                                )
+
+        model = ({'M.CHF.EUR.SP00.E': ['1.3413', '1.3089', '1.3452'],
+                  'M.GBP.EUR.SP00.E': ['0.82363', '0.83987', '0.87637'],
+                  'M.JPY.EUR.SP00.E': ['110.04', '110.26', '113.67'],
+                  'M.USD.EUR.SP00.E': ['1.2894', '1.3067', '1.3898']},
+                 {'M.CHF.EUR.SP00.E': ['2010-08', '2010-09', '2010-10'],
+                  'M.GBP.EUR.SP00.E': ['2010-08', '2010-09', '2010-10'],
+                  'M.JPY.EUR.SP00.E': ['2010-08', '2010-09', '2010-10'],
+                  'M.USD.EUR.SP00.E': ['2010-08', '2010-09', '2010-10']},
+                 {'M.CHF.EUR.SP00.E': {'CONF_STATUS_OBS': ['F', 'F', 'F'],
+                                       'OBS_STATUS': ['A', 'A', 'A']},
+                  'M.GBP.EUR.SP00.E': {'CONF_STATUS_OBS': ['F', 'F', 'F'],
+                                       'OBS_STATUS': ['A', 'A', 'A']},
+                  'M.JPY.EUR.SP00.E': {'CONF_STATUS_OBS': ['F', 'F', 'F'],
+                                       'OBS_STATUS': ['A', 'A', 'A']},
+                  'M.USD.EUR.SP00.E': {'CONF_STATUS_OBS': ['F', 'F', 'F'],
+                                       'OBS_STATUS': ['A', 'A', 'A']}},
+                 {'M.CHF.EUR.SP00.E': {'FREQ': 'M',
+                                       'CURRENCY': 'CHF',
+                                       'CURRENCY_DENOM': 'EUR',
+                                       'EXR_TYPE': 'SP00',
+                                       'EXR_VAR': 'E'},
+                  'M.GBP.EUR.SP00.E': {'FREQ': 'M',
+                                       'CURRENCY': 'GBP',
+                                       'CURRENCY_DENOM': 'EUR',
+                                       'EXR_TYPE': 'SP00',
+                                       'EXR_VAR': 'E'},
+                  'M.JPY.EUR.SP00.E': {'FREQ': 'M',
+                                       'CURRENCY': 'JPY',
+                                       'CURRENCY_DENOM': 'EUR',
+                                       'EXR_TYPE': 'SP00',
+                                       'EXR_VAR': 'E'},
+                  'M.USD.EUR.SP00.E': {'FREQ': 'M',
+                                       'CURRENCY': 'USD',
+                                       'CURRENCY_DENOM': 'EUR',
+                                       'EXR_TYPE': 'SP00',
+                                       'EXR_VAR': 'E'}})
+
+        result = sdmx_client.raw_data("exr",'....')
+
+        self.assertEqual(result,model)
 
 class SDMX_JSON_2_1_TestCase(unittest.TestCase):
     """Tests of SDMX JSON 2.1
