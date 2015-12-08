@@ -109,9 +109,83 @@ class SDMX_XML_2_0_TestCase(unittest.TestCase):
     def test_codes(self):
         pass
 
-    @unittest.skipIf(True, "TODO")
+    @httpretty.activate
     def test_raw_data(self):
-        pass
+        #https://sdw-wsrest.ecb.europa.eu/service/categoryscheme
+        data_fp = os.path.abspath(os.path.join(RESOURCES_XML_2_0, 
+                                                   "GenericSample.xml"))
+
+        body = None
+        with open(data_fp) as fp:
+            body = fp.read()
+
+        httpretty.register_uri(httpretty.GET, 
+                               "https://sdw-wsrest.ecb.europa.eu/GenericData?dataflow=EXR",
+                               body=body,
+                               status=200,
+                               content_type="application/xml"
+                               )
+
+        sdmx_client = Repository(sdmx_url='https://sdw-wsrest.ecb.europa.eu', 
+                                 format="xml", 
+                                 version="2_0",
+                                 agencyID='ECB',
+                                 namespace_style='short'
+                                )
+
+
+
+        model = ({'A.P.A.MX': ['3.14'],
+                  'M.P.A.MX': ['3.14',
+                               '3.14',
+                               '4.29',
+                               '6.04',
+                               '5.18',
+                               '5.07',
+                               '3.13',
+                               '1.17',
+                               '1.14',
+                               '3.04',
+                               '1.14',
+                               '3.24']},
+                 {'A.P.A.MX': ['2000-01'],
+                  'M.P.A.MX': ['2000-01',
+                               '2000-02',
+                               '2000-03',
+                               '2000-04',
+                               '2000-05',
+                               '2000-06',
+                               '2000-07',
+                               '2000-08',
+                               '2000-09',
+                               '2000-10',
+                               '2000-11',
+                               '2000-12']},
+                 {'A.P.A.MX': [{'OBS_STATUS': 'A'}],
+                  'M.P.A.MX': [{'OBS_STATUS': 'A'},
+                               {'OBS_STATUS': 'A'},
+                               {'OBS_STATUS': 'A'},
+                               {'OBS_STATUS': 'A'},
+                               {'OBS_STATUS': 'A'},
+                               {'OBS_STATUS': 'A'},
+                               {'OBS_STATUS': 'A'},
+                               {'OBS_STATUS': 'A'},
+                               {'OBS_STATUS': 'A'},
+                               {'OBS_STATUS': 'A'},
+                               {'OBS_STATUS': 'A'},
+                               {'OBS_STATUS': 'A'}]},
+                 {'A.P.A.MX': {'FREQ': 'A',
+                               'JD_TYPE': 'P',
+                               'JD_CATEGORY': 'A',
+                               'VIS_CTY': 'MX'},
+                  'M.P.A.MX': {'FREQ': 'M',
+                               'JD_TYPE': 'P',
+                               'JD_CATEGORY': 'A',
+                               'VIS_CTY': 'MX'}})
+
+        result = sdmx_client.raw_data('EXR', {})
+
+        self.assertEqual(result,model)
 
 class SDMX_XML_2_1_TestCase(unittest.TestCase):
     """Tests of SDMX ML 2.1
@@ -119,6 +193,7 @@ class SDMX_XML_2_1_TestCase(unittest.TestCase):
     @see: https://github.com/sdmx-twg/sdmx-ml-v2_1
     """
 
+    @httpretty.activate
     def test_categories(self):
         #https://sdw-wsrest.ecb.europa.eu/service/categoryscheme
         codes_fp = os.path.abspath(os.path.join(RESOURCES_XML_2_1, 
