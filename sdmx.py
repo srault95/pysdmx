@@ -495,8 +495,12 @@ class Repository(object):
                 # dimension = date_parser(dimensions[0].text, codes['FREQ'])
                 obsvalue = observation.xpath(".//generic:ObsValue",
                                            namespaces=tree.nsmap)
-                value = obsvalue[0].get('value')
-                values.append(value)
+                if obsvalue:
+                    value = obsvalue[0].get('value')
+                    values.append(value)
+                else:
+                    # missing value
+                    values.append('')
                 _attributes = {}
                 for attribute in \
                     observation.iterfind(".//generic:Attributes",
@@ -553,17 +557,21 @@ class Repository(object):
                 elif elem.tag == GENERIC + 'Obs':
                     a = {}
                     for elem1 in elem.iterchildren():
-
+                        obs_value = False
                         if elem1.tag == GENERIC + 'ObsDimension':
                             dimensions.append(elem1.get('value'))
                         elif elem1.tag == GENERIC + 'ObsValue':
                             value = elem1.get('value')
                             values.append(value)
+                            obs_value = True
                         elif elem1.tag == GENERIC + 'Attributes':
                             for elem2 in elem1.iterchildren():
                                 key = elem2.get('id') 
                                 a[key] = elem2.get('value')
                                 a_keys.add(key)
+                    if not obs_value:
+                        # missing observation
+                        values.append('')
                     if len(a):
                         attributes[obs_nbr] = a
                     obs_nbr += 1
