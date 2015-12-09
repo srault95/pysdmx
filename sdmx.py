@@ -96,6 +96,65 @@ def date_parser(date, frequency):
         return datetime.datetime.strptime(date, '%Y-%m')
     if frequency == 'D':
         return datetime.datetime.strptime(date, '%Y-%m-%d')
+
+
+class query_rest_xml(object):
+    """Retrieve SDMX messages.
+
+    :param url: The URL of the message.
+    :type url: str
+    :param requests_client: A requests object used for connection pooling
+    :type requests_client: requests.sessions.Session
+    :return: An lxml.etree.ElementTree() of the SDMX message
+    """
+    def __init__(self, url, requests_client = requests, timeout = None):
+        self.url = url
+        self.requests_client = requests_client
+        self.temporary_xml = tempfile.TemporaryFile()
+        self.timeout = timeout
+    def __enter__(self):
+        logger.info('Requesting %s', self.url)
+        client = self.requests_client or requests
+        request = client.get(self.url, timeout=self.timeout)
+        if request.status_code == requests.codes.ok:
+            for chunk in request.iter_content():
+                self.temporary_xml.write(chunk)
+        elif request.status_code == 430:
+            #Sometimes, eurostat creates a zipfile when the query is too large. We have to wait for the file to be generated.
+            messages = response.XPath('.//footer:Message/common:Text',
+                                      namespaces=response.nsmap)
+            regex_ = re.compile("Due to the large query the response will be written "
+                                "to a file which will be located under URL: (.*)")
+            matches = [element.text for element in messages 
+                           if element.text.startswith('Due to the large query the response will be written')]
+            if matches:
+                response_ = None
+                i = 30
+                while i<101:
+                    time.sleep(i)
+                    i = i+10
+                    pos = matches[0].find('http://') 
+                    url = matches[0][pos:]  
+                    request = requests.get(url)
+                    if request.headers['content-type'] == "application/octet-stream":
+                        buffer = BytesIO(request.content)
+                        file = zipfile.ZipFile(buffer)
+                        filename = file.namelist()[0]
+                        with file.open(filename) as file_result:
+                            for chunk in file_result.readlines():
+                                self.temporary_xml.write(file_result.read())
+                        break
+                        if not file:
+                            raise Exception("The provider has not delivered the file you are looking for.")
+            else:
+                raise ValueError("Error getting client({})".format(request.status_code))
+        else:
+            raise ValueError("Error getting client({})".format(request.status_code))
+        self.temporary_xml.seek(0)
+        return self.temporary_xml
+    def __exit__(self, exception_type, exception_value, traceback):
+        self.temporary_xml.close()
+
     
 class Repository(object):
     """Data provider. This is the main class that allows practical access to all the data.
@@ -164,61 +223,6 @@ class Repository(object):
         request = client.get(url, timeout=self.timeout)
         return json.load(StringIO(request.text), object_pairs_hook=OrderedDict)
     
-    class query_rest_xml(object):
-        """Retrieve SDMX messages.
-
-        :param url: The URL of the message.
-        :type url: str
-        :param requests_client: A requests object used for connection pooling
-        :type requests_client: requests.sessions.Session
-        :return: An lxml.etree.ElementTree() of the SDMX message
-        """
-        def __init__(self, url, requests_client):
-            self.url = url
-            self.requests_client = requests_client
-            self.temporary_xml = tempfile.TemporaryFile()
-        def __enter__(self):
-            logger.info('Requesting %s', self.url)
-            client = self.requests_client or requests
-            request = client.get(self.url, timeout=self.timeout)
-            if request.status_code == requests.codes.ok:
-                for chunk in request.iter_content():
-                    self.temporary_xml.write(chunk)
-            elif request.status_code == 430:
-                #Sometimes, eurostat creates a zipfile when the query is too large. We have to wait for the file to be generated.
-                messages = response.XPath('.//footer:Message/common:Text',
-                                          namespaces=response.nsmap)
-                regex_ = re.compile("Due to the large query the response will be written "
-                                    "to a file which will be located under URL: (.*)")
-                matches = [element.text for element in messages 
-                               if element.text.startswith('Due to the large query the response will be written')]
-                if matches:
-                    response_ = None
-                    i = 30
-                    while i<101:
-                        time.sleep(i)
-                        i = i+10
-                        pos = matches[0].find('http://') 
-                        url = matches[0][pos:]  
-                        request = requests.get(url)
-                        if request.headers['content-type'] == "application/octet-stream":
-                            buffer = BytesIO(request.content)
-                            file = zipfile.ZipFile(buffer)
-                            filename = file.namelist()[0]
-                            with file.open(filename) as file_result:
-                                for chunk in file_result.readlines():
-                                    self.temporary_xml.write(file_result.read())
-                            break
-                            if not file:
-                                raise Exception("The provider has not delivered the file you are looking for.")
-                else:
-                    raise ValueError("Error getting client({})".format(request.status_code))
-            else:
-                raise ValueError("Error getting client({})".format(request.status_code))
-            return self.temporary_xml
-        def __exit__(self):
-            self.temporary_xml.close()
-
     def _categories_xml_2_0(self):
 
         def walk_category(category):
@@ -239,11 +243,11 @@ class Repository(object):
             
             return category_
                     
-        tree = self.query_rest_xml(self.category_scheme_url)
-        xml_categories = tree.xpath('.//structure:CategoryScheme',
-                                    namespaces=tree.nsmap)
-        
-        return walk_category(xml_categories[0])                            
+        with query_rest_xml(self.category_scheme_url) as file:
+            tree = lxml.etree.parse(file)
+            xml_categories = tree.xpath('.//structure:CategoryScheme',
+                                        namespaces=tree.nsmap)
+            return walk_category(xml_categories[0])                            
 
     def _categories_xml_2_1(self):
         
@@ -261,11 +265,13 @@ class Repository(object):
                 
             return category_
 
-        tree = self.query_rest_xml(self.sdmx_url + '/categoryscheme')
-        xml_categories = tree.xpath('.//str:CategoryScheme',
-                                    namespaces=tree.nsmap)
-        
-        return walk_category(xml_categories[0])
+        with query_rest_xml(self.sdmx_url + '/categoryscheme') as file:
+            tree = lxml.etree.parse(file)
+            nsmap = tree.getroot().nsmap
+            xml_categories = root.xpath('.//str:CategoryScheme',
+                                        namespaces=nsmap)
+            return walk_category(xml_categories[0])                            
+
 
     @property
     def categories(self):
