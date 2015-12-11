@@ -37,6 +37,7 @@ import zipfile
 from collections import OrderedDict, namedtuple, defaultdict
 import logging
 import json
+import pprint
 
 logger = logging.getLogger("sdmx")
 
@@ -175,7 +176,7 @@ class Repository(object):
         self.timeout = timeout
         self.requests_client = requests_client
         self.namespace_style=namespace_style
-        if namespace_style == 'small':
+        if namespace_style == 'short':
             # TODO: use these everywhere
             self.structure = 'str'
             self.message = 'mes'
@@ -250,27 +251,46 @@ class Repository(object):
             return walk_category(xml_categories[0])                            
 
     def _categories_xml_2_1(self):
-        
         def walk_category(category):
             category_ = {}
-            name = category.xpath("./com:Name[@xml:lang='en']",namespaces=category.nsmap)
+            name = category.xpath("./"+self.common+":Name[@xml:lang='en']",namespaces=category.nsmap)
             category_['name'] = name[0].text
             category_['id'] = category.attrib['id']
             subcategories = []
-            for subcategory in category.xpath('./str:Category',
+            for subcategory in category.xpath('./'+self.structure+':Category',
                                               namespaces=category.nsmap):
                 subcategories.append(walk_category(subcategory))
             if subcategories != []:
                 category_['subcategories'] = subcategories
-                
             return category_
 
+
         with query_rest_xml(self.sdmx_url + '/categoryscheme') as file:
-            tree = lxml.etree.parse(file)
-            nsmap = tree.getroot().nsmap
-            xml_categories = root.xpath('.//str:CategoryScheme',
-                                        namespaces=nsmap)
-            return walk_category(xml_categories[0])                            
+            categories = []
+            subcategories = []
+            counter = 0
+            for event, element in lxml.etree.iterparse(file):
+                if lxml.etree.QName(element.tag).localname == "Category":
+                    category_ = {}
+                    category_['name'] = {}
+                    category_['id'] = element.attrib['id']
+                    children_categories = 0
+                    for children in element:
+                        if lxml.etree.QName(children.tag).localname == "Name":
+                            for item in children.items():
+                                if item[0][-4:] == 'lang':
+                                    category_['name'][item[1]] = children.text
+                        elif lxml.etree.QName(children.tag).localname == "Category":
+                            children_categories += 1
+                            children.clear()
+                    if children_categories == 0:
+                        categories.append(category_)
+                    else:
+                        category_['subcategories'] = []
+                        for i in range(children_categories):
+                            category_['subcategories'].append(categories.pop())
+                        categories.append(category_)
+            return categories                            
 
 
     @property
