@@ -246,8 +246,9 @@ class Repository(object):
                     
         with query_rest_xml(self.category_scheme_url) as file:
             tree = lxml.etree.parse(file)
+            namespaces = tree.getroot().nsmap
             xml_categories = tree.xpath('.//structure:CategoryScheme',
-                                        namespaces=tree.nsmap)
+                                        namespaces=namespaces)
             return walk_category(xml_categories[0])                            
 
     def _categories_xml_2_1(self):
@@ -312,14 +313,16 @@ class Repository(object):
         """Links categories and dataflows"""
 
         categories = defaultdict(list)
-        tree = self.query_rest_xml(self.sdmx_url + '/categorisation')
-        categorisations = tree.xpath('.//str:Categorisation',namespaces=tree.nsmap)
+        with query_rest_xml(self.sdmx_url + '/categorisation') as file:
+            tree = lxml.etree.parse(file)
+        namespaces = tree.getroot().nsmap
+        categorisations = tree.xpath('.//str:Categorisation',namespaces=namespaces)
         for categorisation in categorisations:
-            source = categorisation.xpath('str:Source',namespaces=tree.nsmap)
-            ref = source[0].xpath('Ref',namespaces=tree.nsmap)
+            source = categorisation.xpath('str:Source',namespaces=namespaces)
+            ref = source[0].xpath('Ref',namespaces=namespaces)
             source_id = ref[0].attrib['id']
-            target = categorisation.xpath('str:Target',namespaces=tree.nsmap)
-            ref = target[0].xpath('Ref',namespaces=tree.nsmap)
+            target = categorisation.xpath('str:Target',namespaces=namespaces)
+            ref = target[0].xpath('Ref',namespaces=namespaces)
             target_id = ref[0].attrib['id']
             categories[target_id].append(source_id)
         return(categories)
@@ -327,20 +330,22 @@ class Repository(object):
     def _dataflows_xml_2_0(self, flowref=None):
 
         self._dataflows = {}
-        tree = self.query_rest_xml(self.dataflow_url+'/'+str(flowref))
+        with query_rest_xml(self.dataflow_url+'/'+str(flowref)) as file:
+            tree = lxml.etree.parse(file)
+        namespaces = tree.getroot().nsmap
         dataflow_path = ".//structure:Dataflow"
         name_path = ".//structure:Name"
         keyid_path = ".//structure:KeyFamilyID"
         for dataflow in tree.iterfind(dataflow_path,
-                                           namespaces=tree.nsmap):
+                                           namespaces=namespaces):
             for id in dataflow.iterfind(keyid_path,
-                                           namespaces=tree.nsmap):
+                                           namespaces=namespaces):
                 id = id.text
             agencyID = dataflow.get('agencyID')
             version = dataflow.get('version')
             titles = {}
             for title in dataflow.iterfind(name_path,
-                                           namespaces=tree.nsmap):
+                                           namespaces=namespaces):
                 titles['en'] = title.text
 
             self._dataflows[id] = (agencyID, version, titles)
@@ -350,18 +355,21 @@ class Repository(object):
     def _dataflows_xml_2_1(self, flowref=None):
 
         self._dataflows = {}
-        tree = self.query_rest_xml('/'.join([self.dataflow_url, flowref]))
+        with query_rest_xml('/'.join([self.dataflow_url, flowref])) as file:
+            tree = lxml.etree.parse(file)
         dataflow_path = ".//str:Dataflow"
         name_path = ".//com:Name"
 
+        namespaces = tree.getroot().nsmap
+
         for dataflow in tree.iterfind(dataflow_path,
-                                           namespaces=tree.nsmap):
+                                           namespaces=namespaces):
             id = dataflow.get('id')
             agencyID = dataflow.get('agencyID')
             version = dataflow.get('version')
             titles = {}
             for title in dataflow.iterfind(name_path,
-                                           namespaces=tree.nsmap):
+                                           namespaces=namespaces):
                 language = title.values()
                 language = language[0]
                 titles[language] = title.text
@@ -395,23 +403,26 @@ class Repository(object):
         dimension_path = ".//structure:Dimension"
 
         url = '/'.join([self.sdmx_url, 'KeyFamily', flowRef])
-        tree = self.query_rest_xml(url)
+        with query_rest_xml(url) as file:
+            tree = lxml.etree.parse(file)
+
+        namespaces = tree.getroot().nsmap
 
         codelists = tree.xpath(codelists_path,
-                                      namespaces=tree.nsmap)
+                                      namespaces=namespaces)
         for codelists_ in codelists:
             for codelist in codelists_.iterfind(codelist_path,
-                                                namespaces=tree.nsmap):
+                                                namespaces=namespaces):
                 name = codelist.get('id')
                 name = name[3:]
                 # a dot "." can't be part of a JSON field name
                 name = re.sub(r"\.","",name)
                 code = {}
                 for code_ in codelist.iterfind(code_path,
-                                               namespaces=tree.nsmap):
+                                               namespaces=namespaces):
                     code_key = code_.get('value')
                     code_name = code_.xpath(description_path,
-                                            namespaces=tree.nsmap)
+                                            namespaces=namespaces)
                     code_name = code_name[0]
                     code[code_key] = code_name.text
                 self._codes[name] = code
@@ -430,29 +441,30 @@ class Repository(object):
 
         self._codes = {}
         url = '/'.join([self.sdmx_url, 'datastructure', self.agencyID, flowRef])
-        tree = self.query_rest_xml(url)
+        with query_rest_xml(url) as file:
+            tree = lxml.etree.parse(file)
+        namespaces = tree.getroot().nsmap
         codelists_path = ".//"+self.structure+":Codelists"
         codelist_path = ".//"+self.structure+":Codelist"
         name_path = ".//"+self.common+":Name"
         code_path = ".//"+self.structure+":Code"
 
-        print(tree.nsmap)
         codelists = tree.xpath(codelists_path,
-                                      namespaces=tree.nsmap)
+                                      namespaces=namespaces)
         for codelists_ in codelists:
             for codelist in codelists_.iterfind(codelist_path,
-                                                namespaces=tree.nsmap):
-                name = codelist.xpath(name_path, namespaces=tree.nsmap)
+                                                namespaces=namespaces):
+                name = codelist.xpath(name_path, namespaces=namespaces)
                 name = name[0]
                 name = name.text
                 # a dot "." can't be part of a JSON field name
                 name = re.sub(r"\.","",name)
                 code = OrderedDict()
                 for code_ in codelist.iterfind(code_path,
-                                               namespaces=tree.nsmap):
+                                               namespaces=namespaces):
                     code_key = code_.get('id')
                     code_name = code_.xpath(name_path,
-                                            namespaces=tree.nsmap)
+                                            namespaces=namespaces)
                     code_name = code_name[0]
                     code[code_key] = code_name.text
                     
@@ -515,42 +527,44 @@ class Repository(object):
         else:
             query = resource + '?dataflow=' + flowRef + key
         url = '/'.join([self.sdmx_url,query])
-        tree = self.query_rest_xml(url)
+        with query_rest_xml(url) as file:
+            tree = lxml.etree.parse(file)
+        namespaces = tree.getroot().nsmap
 
         for series in tree.iterfind(".//generic:Series",
-                                         namespaces=tree.nsmap):
+                                         namespaces=namespaces):
             logger.debug('Extracting the series from the SDMX message')
             attributes = []
             values = []
             dimensions = []
             for codes_ in series.iterfind(".//generic:SeriesKey",
-                                          namespaces=tree.nsmap):
+                                          namespaces=namespaces):
                 codes = OrderedDict()
                 for key in codes_.iterfind(".//generic:Value",
-                                           namespaces=tree.nsmap):
+                                           namespaces=namespaces):
                     codes[key.get('concept')] = key.get('value')
                 logger.debug('Code %s', codes)
             for observation in series.iterfind(".//generic:Obs",
-                                               namespaces=tree.nsmap):
+                                               namespaces=namespaces):
                 time = observation.xpath(".//generic:Time",
-                                               namespaces=tree.nsmap)
+                                               namespaces=namespaces)
                 time = time[0].text
                 logger.debug('Time vector %s', time)
                 dimensions.append(time)
                 # I've commented this out as pandas.to_dates seems to do a better job.
                 # dimension = date_parser(dimensions[0].text, codes['FREQ'])
                 obsvalue = observation.xpath(".//generic:ObsValue",
-                                           namespaces=tree.nsmap)
+                                           namespaces=namespaces)
                 value = obsvalue[0].get('value')
                 values.append(value)
                 _attributes = {}
                 for attribute in \
                     observation.iterfind(".//generic:Attributes",
-                                         namespaces=tree.nsmap):
+                                         namespaces=namespaces):
                     for value_ in \
                         attribute.xpath(
                             ".//generic:Value",
-                            namespaces=tree.nsmap):
+                            namespaces=namespaces):
                         _attributes[value_.get('concept')] = value_.get('value')
                 attributes.append(_attributes)
             key = ".".join(codes.values())
@@ -577,13 +591,16 @@ class Repository(object):
         else:
             query = '/'.join([resource, flowRef, key])
         url = '/'.join([self.sdmx_url,query])
-        tree = self.query_rest_xml(url)
+        with query_rest_xml(url) as file:
+            tree = lxml.etree.parse(file)
+
+        namespaces = tree.getroot().nsmap
         #parser = lxml.etree.XMLParser(ns_clean=True, recover=True, encoding='utf-8') 
         #tree = lxml.etree.fromstring(tree, parser=parser)
-        GENERIC = '{'+tree.nsmap['generic']+'}'
+        GENERIC = '{'+namespaces['generic']+'}'
         
         for series in tree.iterfind(".//generic:Series",
-                                    namespaces=tree.nsmap):
+                                    namespaces=namespaces):
             attributes = {}
             values = []
             dimensions = []
