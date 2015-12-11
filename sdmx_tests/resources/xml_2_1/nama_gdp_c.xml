@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mes:Structure xmlns:mes="http://www.sdmx.org/resources/sdmxml/schemas/v2_1/message" xmlns:str="http://www.sdmx.org/resources/sdmxml/schemas/v2_1/structure" xmlns:com="http://www.sdmx.org/resources/sdmxml/schemas/v2_1/common">
+  <mes:Header>
+    <mes:ID>IDREF1464</mes:ID>
+    <mes:Test>false</mes:Test>
+    <mes:Prepared>2015-12-03T14:31:24.404Z</mes:Prepared>
+    <mes:Sender id="Unknown"/>
+    <mes:Receiver id="Unknown"/>
+  </mes:Header>
+  <mes:Structures>
+    <str:Dataflows>
+      <str:Dataflow id="nama_gdp_c" urn="urn:sdmx:org.sdmx.infomodel.datastructure.Dataflow=ESTAT:nama_gdp_c(1.0)" agencyID="ESTAT" version="1.0">
+        <com:Name xml:lang="en">GDP and main components - Current prices</com:Name>
+        <com:Name xml:lang="de">BIP und Hauptkomponenten - Jeweilige Preise</com:Name>
+        <com:Name xml:lang="fr">PIB et principales composantes - Prix courants</com:Name>
+        <str:Structure>
+          <Ref id="DSD_nama_gdp_c" version="1.0" agencyID="ESTAT" package="datastructure" class="DataStructure"/>
+        </str:Structure>
+      </str:Dataflow>
+    </str:Dataflows>
+  </mes:Structures>
+</mes:Structure>

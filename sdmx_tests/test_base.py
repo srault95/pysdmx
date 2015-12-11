@@ -3,13 +3,16 @@
 import os
 import unittest
 import httpretty
-from pprint import pprint
+import pprint
 
 from sdmx_tests import resources
 from sdmx_tests.resources import json_2_1
 from sdmx_tests.resources import xml_2_0
 from sdmx_tests.resources import xml_2_1
 from sdmx import Repository
+
+#TODELETE
+import requests
 
 RESOURCES = os.path.abspath(os.path.dirname(resources.__file__))
 RESOURCES_JSON_2_1 = os.path.abspath(os.path.dirname(json_2_1.__file__))
@@ -106,9 +109,83 @@ class SDMX_XML_2_0_TestCase(unittest.TestCase):
     def test_codes(self):
         pass
 
-    @unittest.skipIf(True, "TODO")
+    @httpretty.activate
     def test_raw_data(self):
-        pass
+        #https://sdw-wsrest.ecb.europa.eu/service/categoryscheme
+        data_fp = os.path.abspath(os.path.join(RESOURCES_XML_2_0, 
+                                                   "GenericSample.xml"))
+
+        body = None
+        with open(data_fp) as fp:
+            body = fp.read()
+
+        httpretty.register_uri(httpretty.GET, 
+                               "https://sdw-wsrest.ecb.europa.eu/GenericData?dataflow=EXR",
+                               body=body,
+                               status=200,
+                               content_type="application/xml"
+                               )
+
+        sdmx_client = Repository(sdmx_url='https://sdw-wsrest.ecb.europa.eu', 
+                                 format="xml", 
+                                 version="2_0",
+                                 agencyID='ECB',
+                                 namespace_style='short'
+                                )
+
+
+
+        model = ({'A.P.A.MX': ['3.14'],
+                  'M.P.A.MX': ['3.14',
+                               '3.14',
+                               '4.29',
+                               '6.04',
+                               '5.18',
+                               '5.07',
+                               '3.13',
+                               '1.17',
+                               '1.14',
+                               '3.04',
+                               '1.14',
+                               '3.24']},
+                 {'A.P.A.MX': ['2000-01'],
+                  'M.P.A.MX': ['2000-01',
+                               '2000-02',
+                               '2000-03',
+                               '2000-04',
+                               '2000-05',
+                               '2000-06',
+                               '2000-07',
+                               '2000-08',
+                               '2000-09',
+                               '2000-10',
+                               '2000-11',
+                               '2000-12']},
+                 {'A.P.A.MX': [{'OBS_STATUS': 'A'}],
+                  'M.P.A.MX': [{'OBS_STATUS': 'A'},
+                               {'OBS_STATUS': 'A'},
+                               {'OBS_STATUS': 'A'},
+                               {'OBS_STATUS': 'A'},
+                               {'OBS_STATUS': 'A'},
+                               {'OBS_STATUS': 'A'},
+                               {'OBS_STATUS': 'A'},
+                               {'OBS_STATUS': 'A'},
+                               {'OBS_STATUS': 'A'},
+                               {'OBS_STATUS': 'A'},
+                               {'OBS_STATUS': 'A'},
+                               {'OBS_STATUS': 'A'}]},
+                 {'A.P.A.MX': {'FREQ': 'A',
+                               'JD_TYPE': 'P',
+                               'JD_CATEGORY': 'A',
+                               'VIS_CTY': 'MX'},
+                  'M.P.A.MX': {'FREQ': 'M',
+                               'JD_TYPE': 'P',
+                               'JD_CATEGORY': 'A',
+                               'VIS_CTY': 'MX'}})
+
+        result = sdmx_client.raw_data('EXR', {})
+
+        self.assertEqual(result,model)
 
 class SDMX_XML_2_1_TestCase(unittest.TestCase):
     """Tests of SDMX ML 2.1
@@ -116,21 +193,233 @@ class SDMX_XML_2_1_TestCase(unittest.TestCase):
     @see: https://github.com/sdmx-twg/sdmx-ml-v2_1
     """
 
-    @unittest.skipIf(True, "TODO")
+    @httpretty.activate
     def test_categories(self):
-        pass
+        #https://sdw-wsrest.ecb.europa.eu/service/categoryscheme
+        codes_fp = os.path.abspath(os.path.join(RESOURCES_XML_2_1, 
+                                                   "categoryscheme.xml"))
 
-    @unittest.skipIf(True, "TODO")
+        body = None
+        with open(codes_fp) as fp:
+            body = fp.read()
+
+        httpretty.register_uri(httpretty.GET, 
+                               "https://sdw-wsrest.ecb.europa.eu/service/categoryscheme",
+                               body=body,
+                               status=200,
+                               content_type="application/xml"
+                               )
+
+        sdmx_client = Repository(sdmx_url='https://sdw-wsrest.ecb.europa.eu/service', 
+                                 format="xml", 
+                                 version="2_1",
+                                 agencyID='ECB',
+                                 namespace_style='short'
+                                )
+
+
+        model = {'id': 'MOBILE_NAVI',
+                 'name': 'Economic concepts',
+                 'subcategories': [{'id': '01', 'name': 'Monetary operations'},
+                                   {'id': '02',
+                                    'name': 'Prices, output, demand and labour market'},
+                                   {'id': '03', 'name': 'Monetary and financial statistics'},
+                                   {'id': '04', 'name': 'Euro area accounts'},
+                                   {'id': '05', 'name': 'Government finance'},
+                                   {'id': '06',
+                                    'name': 'External transactions and positions'},
+                                   {'id': '07', 'name': 'Exchange rates'},
+                                   {'id': '08',
+                                    'name': 'Payments and securities trading, clearing, '
+                                            'settlement'},
+                                   {'id': '09', 'name': 'Banknotes and Coins'},
+                                   {'id': '10',
+                                    'name': 'Indicators of Financial Integration'},
+                                   {'id': '11',
+                                    'name': 'Real Time Database (research database)'}]}
+        result = sdmx_client.categories
+        self.assertEqual(result,model)
+
+    @httpretty.activate
     def test_dataflows(self):
-        pass
+        dataflows_fp = os.path.abspath(os.path.join(RESOURCES_XML_2_1, 
+                                                    "nama_gdp_c.xml"))
 
-    @unittest.skipIf(True, "TODO")
+        body = None
+        with open(dataflows_fp) as fp:
+            body = fp.read()
+
+        httpretty.register_uri(httpretty.GET, 
+                               "http://ec.europa.eu/eurostat/SDMX/diss-web/rest/dataflow/ESTAT/nama_gdp_c",
+                               body=body,
+                               status=200,
+                               content_type="application/xml"
+                               )
+
+        sdmx_client = Repository(sdmx_url='http://ec.europa.eu/eurostat/SDMX/diss-web/rest', 
+                                 format="xml", 
+                                 version="2_1",
+                                 agencyID='ESTAT',
+                                 namespace_style='short'
+                                )
+
+        result = sdmx_client.dataflows("nama_gdp_c")
+        model = {'nama_gdp_c':
+                 ('ESTAT', '1.0',
+                  {'en': 'GDP and main components - Current prices',
+                   'fr': 'PIB et principales composantes - Prix courants',
+                   'de': 'BIP und Hauptkomponenten - Jeweilige Preise'})}
+
+        self.assertEqual(result,model)
+
+    @httpretty.activate
     def test_codes(self):
-        pass
+        #https://raw.githubusercontent.com/sdmx-twg/sdmx-ml-v2_1/master/samples/common/common.xml
+        codes_fp = os.path.abspath(os.path.join(RESOURCES_XML_2_1, 
+                                                   "common.xml"))
 
-    @unittest.skipIf(True, "TODO")
+        body = None
+        with open(codes_fp) as fp:
+            body = fp.read()
+
+        httpretty.register_uri(httpretty.GET, 
+                               "http://ec.europa.eu/eurostat/SDMX/diss-web/rest/datastructure/ESTAT/DSD_nama_gdp_c",
+                               body=body,
+                               status=200,
+                               content_type="application/xml"
+                               )
+
+        sdmx_client = Repository(sdmx_url='http://ec.europa.eu/eurostat/SDMX/diss-web/rest', 
+                                 format="xml", 
+                                 version="2_1",
+                                 agencyID='ESTAT',
+                                 namespace_style='long'
+                                )
+
+        model = {'Code list for Decimals (DECIMALS)': {'0': 'Zero',
+                                       '1': 'One',
+                                       '2': 'Two',
+                                       '3': 'Three',
+                                       '4': 'Four',
+                                       '5': 'Five',
+                                       '6': 'Six',
+                                       '7': 'Seven',
+                                       '8': 'Eight',
+                                       '9': 'Nine'},
+                 'Code list for Frequency (FREQ)': {'A': 'Annual',
+                                                    'B': 'Daily - business week',
+                                                    'D': 'Daily',
+                                                    'M': 'Monthly',
+                                                    'N': 'Minutely',
+                                                    'Q': 'Quarterly',
+                                                    'S': 'Half Yearly, semester',
+                                                    'W': 'Weekly'},
+                 'Observation status': {'A': 'Normal',
+                                        'B': 'Break',
+                                        'E': 'Estimated value',
+                                        'F': 'Forecast value',
+                                        'I': 'Imputed value (CCSA definition)',
+                                        'M': 'Missing value',
+                                        'P': 'Provisional value',
+                                        'S': 'Strike'},
+                 'code list for Confidentiality Status (CONF_STATUS)': {'C': 'Confidential '
+                                                                             'statistical '
+                                                                             'information',
+                                                                        'D': 'Secondary '
+                                                                             'confidentiality '
+                                                                             'set by the '
+                                                                             'sender, not '
+                                                                             'for\t'
+                                                                             'publication',
+                                                                        'F': 'Free',
+                                                                        'N': 'Not for '
+                                                                             'publication, '
+                                                                             'restricted '
+                                                                             'for internal '
+                                                                             'use only',
+                                                                        'S': 'Secondary '
+                                                                             'confidentiality '
+                                                                             'set and '
+                                                                             'managed by '
+                                                                             'the receiver, '
+                                                                             'not for '
+                                                                             'publication'},
+                 'code list for the Unit Multiplier (UNIT_MULT)': {'0': 'Units',
+                                                                   '1': 'Tens',
+                                                                   '2': 'Hundreds',
+                                                                   '3': 'Thousands',
+                                                                   '4': 'Tens of thousands',
+                                                                   '6': 'Millions',
+                                                                   '9': 'Billions',
+                                                                   '12': 'Trillions',
+                                                                   '15': 'Quadrillions'}}
+        result = sdmx_client.codes("DSD_nama_gdp_c")
+        self.assertEqual(result,model)
+
+    @httpretty.activate
     def test_raw_data(self):
-        pass
+        #https://raw.githubusercontent.com/sdmx-twg/sdmx-ml-v2_1/master/samples/exr/ecb_exr_ng/generic/ecb_exr_ng_ts.xml
+        data_fp = os.path.abspath(os.path.join(RESOURCES_XML_2_1, 
+                                                   "ecb_exr_ng_ts.xml"))
+
+        body = None
+        with open(data_fp) as fp:
+            body = fp.read()
+
+        httpretty.register_uri(httpretty.GET, 
+                               "https://sdw-wsrest.ecb.europa.eu/service/data/exr/....",
+                               body=body,
+                               status=200,
+                               content_type="application/xml"
+                               )
+
+        sdmx_client = Repository(sdmx_url="https://sdw-wsrest.ecb.europa.eu/service", 
+                                 format="xml", 
+                                 version="2_1",
+                                 agencyID='ECB',
+                                 namespace_style='short'
+                                )
+
+        model = ({'M.CHF.EUR.SP00.E': ['1.3413', '1.3089', '1.3452'],
+                  'M.GBP.EUR.SP00.E': ['0.82363', '0.83987', '0.87637'],
+                  'M.JPY.EUR.SP00.E': ['110.04', '110.26', '113.67'],
+                  'M.USD.EUR.SP00.E': ['1.2894', '1.3067', '1.3898']},
+                 {'M.CHF.EUR.SP00.E': ['2010-08', '2010-09', '2010-10'],
+                  'M.GBP.EUR.SP00.E': ['2010-08', '2010-09', '2010-10'],
+                  'M.JPY.EUR.SP00.E': ['2010-08', '2010-09', '2010-10'],
+                  'M.USD.EUR.SP00.E': ['2010-08', '2010-09', '2010-10']},
+                 {'M.CHF.EUR.SP00.E': {'CONF_STATUS_OBS': ['F', 'F', 'F'],
+                                       'OBS_STATUS': ['A', 'A', 'A']},
+                  'M.GBP.EUR.SP00.E': {'CONF_STATUS_OBS': ['F', 'F', 'F'],
+                                       'OBS_STATUS': ['A', 'A', 'A']},
+                  'M.JPY.EUR.SP00.E': {'CONF_STATUS_OBS': ['F', 'F', 'F'],
+                                       'OBS_STATUS': ['A', 'A', 'A']},
+                  'M.USD.EUR.SP00.E': {'CONF_STATUS_OBS': ['F', 'F', 'F'],
+                                       'OBS_STATUS': ['A', 'A', 'A']}},
+                 {'M.CHF.EUR.SP00.E': {'FREQ': 'M',
+                                       'CURRENCY': 'CHF',
+                                       'CURRENCY_DENOM': 'EUR',
+                                       'EXR_TYPE': 'SP00',
+                                       'EXR_VAR': 'E'},
+                  'M.GBP.EUR.SP00.E': {'FREQ': 'M',
+                                       'CURRENCY': 'GBP',
+                                       'CURRENCY_DENOM': 'EUR',
+                                       'EXR_TYPE': 'SP00',
+                                       'EXR_VAR': 'E'},
+                  'M.JPY.EUR.SP00.E': {'FREQ': 'M',
+                                       'CURRENCY': 'JPY',
+                                       'CURRENCY_DENOM': 'EUR',
+                                       'EXR_TYPE': 'SP00',
+                                       'EXR_VAR': 'E'},
+                  'M.USD.EUR.SP00.E': {'FREQ': 'M',
+                                       'CURRENCY': 'USD',
+                                       'CURRENCY_DENOM': 'EUR',
+                                       'EXR_TYPE': 'SP00',
+                                       'EXR_VAR': 'E'}})
+
+        result = sdmx_client.raw_data("exr",'....')
+
+        self.assertEqual(result,model)
 
 class SDMX_JSON_2_1_TestCase(unittest.TestCase):
     """Tests of SDMX JSON 2.1
@@ -251,4 +540,3 @@ class SDMX_JSON_2_1_TestCase(unittest.TestCase):
     @unittest.skipIf(True, "TODO")
     def test_categories(self):
         pass
-
