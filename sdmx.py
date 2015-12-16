@@ -37,6 +37,7 @@ import zipfile
 from collections import OrderedDict, namedtuple, defaultdict
 import logging
 import json
+import pprint
 
 logger = logging.getLogger("sdmx")
 
@@ -96,6 +97,65 @@ def date_parser(date, frequency):
         return datetime.datetime.strptime(date, '%Y-%m')
     if frequency == 'D':
         return datetime.datetime.strptime(date, '%Y-%m-%d')
+
+
+class query_rest_xml(object):
+    """Retrieve SDMX messages.
+
+    :param url: The URL of the message.
+    :type url: str
+    :param requests_client: A requests object used for connection pooling
+    :type requests_client: requests.sessions.Session
+    :return: An lxml.etree.ElementTree() of the SDMX message
+    """
+    def __init__(self, url, requests_client = requests, timeout = None):
+        self.url = url
+        self.requests_client = requests_client
+        self.temporary_xml = tempfile.TemporaryFile()
+        self.timeout = timeout
+    def __enter__(self):
+        logger.info('Requesting %s', self.url)
+        client = self.requests_client or requests
+        request = client.get(self.url, timeout=self.timeout)
+        if request.status_code == requests.codes.ok:
+            for chunk in request.iter_content():
+                self.temporary_xml.write(chunk)
+        elif request.status_code == 430:
+            #Sometimes, eurostat creates a zipfile when the query is too large. We have to wait for the file to be generated.
+            messages = response.XPath('.//footer:Message/common:Text',
+                                      namespaces=response.nsmap)
+            regex_ = re.compile("Due to the large query the response will be written "
+                                "to a file which will be located under URL: (.*)")
+            matches = [element.text for element in messages 
+                           if element.text.startswith('Due to the large query the response will be written')]
+            if matches:
+                response_ = None
+                i = 30
+                while i<101:
+                    time.sleep(i)
+                    i = i+10
+                    pos = matches[0].find('http://') 
+                    url = matches[0][pos:]  
+                    request = requests.get(url)
+                    if request.headers['content-type'] == "application/octet-stream":
+                        buffer = BytesIO(request.content)
+                        file = zipfile.ZipFile(buffer)
+                        filename = file.namelist()[0]
+                        with file.open(filename) as file_result:
+                            for chunk in file_result.readlines():
+                                self.temporary_xml.write(file_result.read())
+                        break
+                        if not file:
+                            raise Exception("The provider has not delivered the file you are looking for.")
+            else:
+                raise ValueError("Error getting client({})".format(request.status_code))
+        else:
+            raise ValueError("Error getting client({})".format(request.status_code))
+        self.temporary_xml.seek(0)
+        return self.temporary_xml
+    def __exit__(self, exception_type, exception_value, traceback):
+        self.temporary_xml.close()
+
     
 class Repository(object):
     """Data provider. This is the main class that allows practical access to all the data.
@@ -116,7 +176,7 @@ class Repository(object):
         self.timeout = timeout
         self.requests_client = requests_client
         self.namespace_style=namespace_style
-        if namespace_style == 'small':
+        if namespace_style == 'short':
             # TODO: use these everywhere
             self.structure = 'str'
             self.message = 'mes'
@@ -164,50 +224,6 @@ class Repository(object):
         request = client.get(url, timeout=self.timeout)
         return json.load(StringIO(request.text), object_pairs_hook=OrderedDict)
     
-    def query_rest_xml(self, url):
-        """Retrieve SDMX messages.
-
-        :param url: The URL of the message.
-        :type url: str
-        :return: An lxml.etree.ElementTree() of the SDMX message
-        """
-        # Fetch data from the provider    
-        logger.info('Requesting %s', url)
-        client = self.requests_client or requests
-        request = client.get(url, timeout=self.timeout)
-        if request.status_code == requests.codes.ok:
-            response_str = request.text.encode('utf-8')
-        elif request.status_code == 430:
-            #Sometimes, eurostat creates a zipfile when the query is too large. We have to wait for the file to be generated.
-            messages = response.XPath('.//footer:Message/common:Text',
-                                      namespaces=response.nsmap)
-            regex_ = re.compile("Due to the large query the response will be written "
-                                "to a file which will be located under URL: (.*)")
-            matches = [element.text for element in messages 
-                           if element.text.startswith('Due to the large query the response will be written')]
-            if matches:
-                response_ = None
-                i = 30
-                while i<101:
-                    time.sleep(i)
-                    i = i+10
-                    pos = matches[0].find('http://') 
-                    url = matches[0][pos:]  
-                    request = requests.get(url)
-                    if request.headers['content-type'] == "application/octet-stream":
-                        buffer = BytesIO(request.content)
-                        file = zipfile.ZipFile(buffer)
-                        filename = file.namelist()[0]
-                        response_str = file.read(filename)
-                        break
-                        if not response_str :
-                            raise Exception("The provider has not delivered the file you are looking for.")
-            else:
-                raise ValueError("Error getting client({})".format(request.status_code))      
-        else:
-            raise ValueError("Error getting client({})".format(request.status_code))
-        return lxml.etree.fromstring(response_str)
-
     def _categories_xml_2_0(self):
 
         def walk_category(category):
@@ -228,33 +244,55 @@ class Repository(object):
             
             return category_
                     
-        tree = self.query_rest_xml(self.category_scheme_url)
-        xml_categories = tree.xpath('.//structure:CategoryScheme',
-                                    namespaces=tree.nsmap)
-        
-        return walk_category(xml_categories[0])                            
+        with query_rest_xml(self.category_scheme_url) as file:
+            tree = lxml.etree.parse(file)
+            namespaces = tree.getroot().nsmap
+            xml_categories = tree.xpath('.//structure:CategoryScheme',
+                                        namespaces=namespaces)
+            return walk_category(xml_categories[0])                            
 
     def _categories_xml_2_1(self):
-        
         def walk_category(category):
             category_ = {}
-            name = category.xpath("./com:Name[@xml:lang='en']",namespaces=category.nsmap)
+            name = category.xpath("./"+self.common+":Name[@xml:lang='en']",namespaces=category.nsmap)
             category_['name'] = name[0].text
             category_['id'] = category.attrib['id']
             subcategories = []
-            for subcategory in category.xpath('./str:Category',
+            for subcategory in category.xpath('./'+self.structure+':Category',
                                               namespaces=category.nsmap):
                 subcategories.append(walk_category(subcategory))
             if subcategories != []:
                 category_['subcategories'] = subcategories
-                
             return category_
 
-        tree = self.query_rest_xml(self.sdmx_url + '/categoryscheme')
-        xml_categories = tree.xpath('.//str:CategoryScheme',
-                                    namespaces=tree.nsmap)
-        
-        return walk_category(xml_categories[0])
+
+        with query_rest_xml(self.sdmx_url + '/categoryscheme') as file:
+            categories = []
+            subcategories = []
+            counter = 0
+            for event, element in lxml.etree.iterparse(file):
+                if lxml.etree.QName(element.tag).localname == "Category":
+                    category_ = {}
+                    category_['name'] = {}
+                    category_['id'] = element.attrib['id']
+                    children_categories = 0
+                    for children in element:
+                        if lxml.etree.QName(children.tag).localname == "Name":
+                            for item in children.items():
+                                if item[0][-4:] == 'lang':
+                                    category_['name'][item[1]] = children.text
+                        elif lxml.etree.QName(children.tag).localname == "Category":
+                            children_categories += 1
+                            children.clear()
+                    if children_categories == 0:
+                        categories.append(category_)
+                    else:
+                        category_['subcategories'] = []
+                        for i in range(children_categories):
+                            category_['subcategories'].append(categories.pop())
+                        categories.append(category_)
+            return categories                            
+
 
     @property
     def categories(self):
@@ -275,14 +313,16 @@ class Repository(object):
         """Links categories and dataflows"""
 
         categories = defaultdict(list)
-        tree = self.query_rest_xml(self.sdmx_url + '/categorisation')
-        categorisations = tree.xpath('.//str:Categorisation',namespaces=tree.nsmap)
+        with query_rest_xml(self.sdmx_url + '/categorisation') as file:
+            tree = lxml.etree.parse(file)
+        namespaces = tree.getroot().nsmap
+        categorisations = tree.xpath('.//str:Categorisation',namespaces=namespaces)
         for categorisation in categorisations:
-            source = categorisation.xpath('str:Source',namespaces=tree.nsmap)
-            ref = source[0].xpath('Ref',namespaces=tree.nsmap)
+            source = categorisation.xpath('str:Source',namespaces=namespaces)
+            ref = source[0].xpath('Ref',namespaces=namespaces)
             source_id = ref[0].attrib['id']
-            target = categorisation.xpath('str:Target',namespaces=tree.nsmap)
-            ref = target[0].xpath('Ref',namespaces=tree.nsmap)
+            target = categorisation.xpath('str:Target',namespaces=namespaces)
+            ref = target[0].xpath('Ref',namespaces=namespaces)
             target_id = ref[0].attrib['id']
             categories[target_id].append(source_id)
         return(categories)
@@ -290,20 +330,22 @@ class Repository(object):
     def _dataflows_xml_2_0(self, flowref=None):
 
         self._dataflows = {}
-        tree = self.query_rest_xml(self.dataflow_url+'/'+str(flowref))
+        with query_rest_xml(self.dataflow_url+'/'+str(flowref)) as file:
+            tree = lxml.etree.parse(file)
+        namespaces = tree.getroot().nsmap
         dataflow_path = ".//structure:Dataflow"
         name_path = ".//structure:Name"
         keyid_path = ".//structure:KeyFamilyID"
         for dataflow in tree.iterfind(dataflow_path,
-                                           namespaces=tree.nsmap):
+                                           namespaces=namespaces):
             for id in dataflow.iterfind(keyid_path,
-                                           namespaces=tree.nsmap):
+                                           namespaces=namespaces):
                 id = id.text
             agencyID = dataflow.get('agencyID')
             version = dataflow.get('version')
             titles = {}
             for title in dataflow.iterfind(name_path,
-                                           namespaces=tree.nsmap):
+                                           namespaces=namespaces):
                 titles['en'] = title.text
 
             self._dataflows[id] = (agencyID, version, titles)
@@ -313,18 +355,21 @@ class Repository(object):
     def _dataflows_xml_2_1(self, flowref=None):
 
         self._dataflows = {}
-        tree = self.query_rest_xml('/'.join([self.dataflow_url, flowref]))
+        with query_rest_xml('/'.join([self.dataflow_url, flowref])) as file:
+            tree = lxml.etree.parse(file)
         dataflow_path = ".//str:Dataflow"
         name_path = ".//com:Name"
 
+        namespaces = tree.getroot().nsmap
+
         for dataflow in tree.iterfind(dataflow_path,
-                                           namespaces=tree.nsmap):
+                                           namespaces=namespaces):
             id = dataflow.get('id')
             agencyID = dataflow.get('agencyID')
             version = dataflow.get('version')
             titles = {}
             for title in dataflow.iterfind(name_path,
-                                           namespaces=tree.nsmap):
+                                           namespaces=namespaces):
                 language = title.values()
                 language = language[0]
                 titles[language] = title.text
@@ -358,23 +403,26 @@ class Repository(object):
         dimension_path = ".//structure:Dimension"
 
         url = '/'.join([self.sdmx_url, 'KeyFamily', flowRef])
-        tree = self.query_rest_xml(url)
+        with query_rest_xml(url) as file:
+            tree = lxml.etree.parse(file)
+
+        namespaces = tree.getroot().nsmap
 
         codelists = tree.xpath(codelists_path,
-                                      namespaces=tree.nsmap)
+                                      namespaces=namespaces)
         for codelists_ in codelists:
             for codelist in codelists_.iterfind(codelist_path,
-                                                namespaces=tree.nsmap):
+                                                namespaces=namespaces):
                 name = codelist.get('id')
                 name = name[3:]
                 # a dot "." can't be part of a JSON field name
                 name = re.sub(r"\.","",name)
                 code = {}
                 for code_ in codelist.iterfind(code_path,
-                                               namespaces=tree.nsmap):
+                                               namespaces=namespaces):
                     code_key = code_.get('value')
                     code_name = code_.xpath(description_path,
-                                            namespaces=tree.nsmap)
+                                            namespaces=namespaces)
                     code_name = code_name[0]
                     code[code_key] = code_name.text
                 self._codes[name] = code
@@ -393,29 +441,30 @@ class Repository(object):
 
         self._codes = {}
         url = '/'.join([self.sdmx_url, 'datastructure', self.agencyID, flowRef])
-        tree = self.query_rest_xml(url)
+        with query_rest_xml(url) as file:
+            tree = lxml.etree.parse(file)
+        namespaces = tree.getroot().nsmap
         codelists_path = ".//"+self.structure+":Codelists"
         codelist_path = ".//"+self.structure+":Codelist"
         name_path = ".//"+self.common+":Name"
         code_path = ".//"+self.structure+":Code"
 
-        print(tree.nsmap)
         codelists = tree.xpath(codelists_path,
-                                      namespaces=tree.nsmap)
+                                      namespaces=namespaces)
         for codelists_ in codelists:
             for codelist in codelists_.iterfind(codelist_path,
-                                                namespaces=tree.nsmap):
-                name = codelist.xpath(name_path, namespaces=tree.nsmap)
+                                                namespaces=namespaces):
+                name = codelist.xpath(name_path, namespaces=namespaces)
                 name = name[0]
                 name = name.text
                 # a dot "." can't be part of a JSON field name
                 name = re.sub(r"\.","",name)
                 code = OrderedDict()
                 for code_ in codelist.iterfind(code_path,
-                                               namespaces=tree.nsmap):
+                                               namespaces=namespaces):
                     code_key = code_.get('id')
                     code_name = code_.xpath(name_path,
-                                            namespaces=tree.nsmap)
+                                            namespaces=namespaces)
                     code_name = code_name[0]
                     code[code_key] = code_name.text
                     
@@ -478,32 +527,34 @@ class Repository(object):
         else:
             query = resource + '?dataflow=' + flowRef + key
         url = '/'.join([self.sdmx_url,query])
-        tree = self.query_rest_xml(url)
+        with query_rest_xml(url) as file:
+            tree = lxml.etree.parse(file)
+        namespaces = tree.getroot().nsmap
 
         for series in tree.iterfind(".//generic:Series",
-                                         namespaces=tree.nsmap):
+                                         namespaces=namespaces):
             logger.debug('Extracting the series from the SDMX message')
             attributes = []
             values = []
             dimensions = []
             for codes_ in series.iterfind(".//generic:SeriesKey",
-                                          namespaces=tree.nsmap):
+                                          namespaces=namespaces):
                 codes = OrderedDict()
                 for key in codes_.iterfind(".//generic:Value",
-                                           namespaces=tree.nsmap):
+                                           namespaces=namespaces):
                     codes[key.get('concept')] = key.get('value')
                 logger.debug('Code %s', codes)
             for observation in series.iterfind(".//generic:Obs",
-                                               namespaces=tree.nsmap):
+                                               namespaces=namespaces):
                 time = observation.xpath(".//generic:Time",
-                                               namespaces=tree.nsmap)
+                                               namespaces=namespaces)
                 time = time[0].text
                 logger.debug('Time vector %s', time)
                 dimensions.append(time)
                 # I've commented this out as pandas.to_dates seems to do a better job.
                 # dimension = date_parser(dimensions[0].text, codes['FREQ'])
                 obsvalue = observation.xpath(".//generic:ObsValue",
-                                           namespaces=tree.nsmap)
+                                           namespaces=namespaces)
                 if obsvalue:
                     value = obsvalue[0].get('value')
                     values.append(value)
@@ -513,11 +564,11 @@ class Repository(object):
                 _attributes = {}
                 for attribute in \
                     observation.iterfind(".//generic:Attributes",
-                                         namespaces=tree.nsmap):
+                                         namespaces=namespaces):
                     for value_ in \
                         attribute.xpath(
                             ".//generic:Value",
-                            namespaces=tree.nsmap):
+                            namespaces=namespaces):
                         _attributes[value_.get('concept')] = value_.get('value')
                 attributes.append(_attributes)
             key = ".".join(codes.values())
@@ -544,13 +595,16 @@ class Repository(object):
         else:
             query = '/'.join([resource, flowRef, key])
         url = '/'.join([self.sdmx_url,query])
-        tree = self.query_rest_xml(url)
+        with query_rest_xml(url) as file:
+            tree = lxml.etree.parse(file)
+
+        namespaces = tree.getroot().nsmap
         #parser = lxml.etree.XMLParser(ns_clean=True, recover=True, encoding='utf-8') 
         #tree = lxml.etree.fromstring(tree, parser=parser)
-        GENERIC = '{'+tree.nsmap['generic']+'}'
+        GENERIC = '{'+namespaces['generic']+'}'
         
         for series in tree.iterfind(".//generic:Series",
-                                    namespaces=tree.nsmap):
+                                    namespaces=namespaces):
             attributes = {}
             values = []
             dimensions = []
